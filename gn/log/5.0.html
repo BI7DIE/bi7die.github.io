@@ -1,0 +1,1975 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>通联日志</title>
+<link rel="shortcut icon" href="../..//img/favicon.ico">
+<link rel="stylesheet" href="css/all.min.css">
+<style>
+/* 【全局样式】 */
+:root {
+--primary: #3b82f6;
+--primary-dark: #2563eb;
+--secondary: #202124;
+--accent: #22d3ee;
+--light: #f8f9fa;
+--dark: #080c16;
+--card-bg: rgba(18, 26, 42, 0.72);
+--border: rgba(255, 255, 255, 0.08);
+--success: #22c55e;
+--warning: #f59e0b;
+--error: #ef4444;
+--temp: #ef4444;
+--humi: #0ea5e9;
+--battery: #22c55e;
+--audio: #a855f7;
+--bubble-bg: rgba(255, 255, 255, 0.08);
+--bubble-hover: rgba(59, 130, 246, 0.3);
+}
+* {
+margin: 0;
+padding: 0;
+box-sizing: border-box;
+font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+-webkit-tap-highlight-color: transparent;
+}
+html,
+body {
+height: 100%;
+overflow: hidden;
+}
+body {
+background: radial-gradient(circle at top, #13203a 0%, #080c16 100%);
+color: #e2e8f0;
+display: flex;
+flex-direction: column;
+position: relative;
+}
+h1 {
+font-size: 2.5rem;
+margin-bottom: 10px;
+background: linear-gradient(to right, #60a5fa, #22d3ee, #c084fc);
+-webkit-background-clip: text;
+-webkit-text-fill-color: transparent;
+text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+.subtitle {
+color: rgba(255, 255, 255, 0.7);
+font-size: 1.1rem;
+}
+.container {
+text-align: center;
+max-width: 1200px;
+margin: 0 auto;
+width: 100%;
+flex: 1;
+position: relative;
+overflow: hidden;
+padding: 0 20px;
+padding-top: 50px;
+}
+.page {
+display: none;
+position: absolute;
+top: 0;
+left: 20px;
+right: 20px;
+bottom: 0;
+overflow-y: auto;
+padding-top: 20px;
+padding-bottom: 70px;
+scrollbar-width: none;
+-ms-overflow-style: none;
+}
+.page::-webkit-scrollbar {
+display: none;
+}
+.page.active {
+display: block;
+}
+.form-container,
+.settings-container {
+background: var(--card-bg);
+backdrop-filter: blur(16px);
+-webkit-backdrop-filter: blur(16px);
+border-radius: 20px;
+padding: 25px;
+margin-bottom: 10px;
+box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+border: 1px solid var(--border);
+}
+.form-grid,
+.settings-grid {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+gap: 20px;
+margin-bottom: 20px;
+}
+.form-group,
+.setting-group {
+position: relative;
+}
+label {
+display: block;
+margin-bottom: 8px;
+font-weight: 600;
+color: #cbd5e1;
+}
+input[type="text"],
+input[type="number"],
+input[type="datetime-local"],
+input[type="date"],
+textarea,
+select {
+width: 100%;
+padding: 12px 15px;
+border-radius: 10px;
+border: 1px solid var(--border);
+background: rgba(0, 0, 0, 0.25);
+color: white;
+font-size: 1rem;
+transition: all 0.3s ease;
+}
+textarea {
+min-height: 80px;
+resize: vertical;
+}
+input:focus,
+textarea:focus,
+select:focus {
+outline: none;
+border-color: var(--primary);
+box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+.btn-group {
+display: flex;
+justify-content: center;
+gap: 15px;
+flex-wrap: wrap;
+margin-top: 15px;
+}
+button {
+padding: 12px 24px;
+border: none;
+border-radius: 10px;
+font-weight: 600;
+cursor: pointer;
+transition: all 0.28s cubic-bezier(0.2,0,0.2,1);
+display: flex;
+align-items: center;
+gap: 8px;
+}
+.btn-primary {
+background: var(--primary);
+color: white;
+}
+.btn-primary:hover {
+background: var(--primary-dark);
+transform: translateY(-3px);
+box-shadow: 0 12px 32px rgba(59,130,246,0.22);
+}
+.btn-secondary {
+background: rgba(255, 255, 255, 0.1);
+color: white;
+}
+.btn-secondary:hover {
+background: rgba(255, 255, 255, 0.18);
+transform: translateY(-2px);
+}
+.btn-warning {
+background: var(--warning);
+color: #1f2937;
+}
+.btn-warning:hover {
+background: #fbbf24;
+transform: translateY(-2px);
+}
+.btn-danger {
+background: var(--error);
+color: white;
+}
+.btn-danger:hover {
+background: #dc2626;
+transform: translateY(-2px);
+}
+.bubbles-container {
+display: flex;
+flex-wrap: wrap;
+justify-content: center;
+gap: 8px;
+margin-top: 10px;
+padding: 10px 0;
+}
+.bubble {
+padding: 6px 12px;
+background: var(--bubble-bg);
+border-radius: 20px;
+cursor: pointer;
+transition: all 0.2s ease;
+font-size: 0.9rem;
+white-space: nowrap;
+}
+.bubble:hover {
+background: var(--bubble-hover);
+transform: translateY(-2px);
+}
+.bubble.active {
+background: var(--primary);
+box-shadow: 0 2px 8px rgba(59, 130, 246, 0.5);
+}
+.logs-header {
+display: block;
+margin-bottom: 20px;
+padding-bottom: 15px;
+border-bottom: 1px solid var(--border);
+}
+.logs-title-actions {
+display: flex;
+justify-content: space-between;
+align-items: center;
+width: 100%;
+margin-top: 15px;
+}
+.search-container {
+margin-bottom: 15px;
+display: block;
+}
+.logs-actions {
+display: flex;
+gap: 10px;
+}
+.logs-container {
+display: grid;
+grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+gap: 20px;
+margin-top: 10px;
+}
+.log-card {
+background: var(--card-bg);
+backdrop-filter: blur(16px);
+-webkit-backdrop-filter: blur(16px);
+border-radius: 16px;
+padding: 20px;
+box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+border: 1px solid var(--border);
+transition: transform 0.3s ease, box-shadow 0.3s ease;
+cursor: pointer;
+}
+.log-card:hover:not(.expanded) {
+transform: translateY(-5px);
+box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+.log-header {
+display: flex;
+justify-content: space-between;
+align-items: center;
+margin-bottom: 10px;
+}
+.frequency {
+font-size: 1.2rem;
+font-weight: 700;
+color: #60a5fa;
+}
+.mode {
+font-size: 1rem;
+color: #94a3b8;
+}
+.callsign {
+font-size: 1.6rem;
+font-weight: 800;
+margin: 8px 0;
+color: white;
+}
+.log-time {
+font-size: 1rem;
+color: #94a3b8;
+margin-bottom: 10px;
+}
+.log-notes {
+margin: 8px 0;
+font-size: 0.95rem;
+color: #cbd5e1;
+padding: 6px 0;
+}
+.log-details {
+display: none;
+grid-template-columns: 1fr 1fr;
+gap: 10px;
+margin-top: 15px;
+padding-top: 10px;
+border-top: 1px solid var(--border);
+}
+.detail-item {
+display: flex;
+flex-direction: column;
+align-items: center;
+text-align: center;
+}
+.detail-label {
+font-size: 0.85rem;
+color: #94a3b8;
+margin-bottom: 4px;
+}
+.detail-value {
+font-weight: 600;
+color: white;
+}
+.log-actions {
+display: flex;
+justify-content: center;
+gap: 8px;
+margin-top: 15px;
+width: 100%;
+grid-column: span 2;
+}
+.empty-state {
+text-align: center;
+padding: 40px;
+color: rgba(255, 255, 255, 0.5);
+}
+.empty-state i {
+font-size: 3rem;
+margin-bottom: 20px;
+color: rgba(255, 255, 255, 0.2);
+}
+.file-input {
+display: none;
+}
+.file-label {
+background: rgba(255,255,255,0.08);
+padding: 10px 15px;
+border-radius: 10px;
+cursor: pointer;
+display: inline-flex;
+align-items: center;
+gap: 8px;
+transition: background 0.3s;
+}
+.file-label:hover {
+background: rgba(255,255,255,0.15);
+}
+.import-status {
+margin-top: 15px;
+padding: 10px;
+border-radius: 8px;
+display: none;
+}
+.import-success {
+background: rgba(34, 197, 94, 0.15);
+color: #86efac;
+border: 1px solid rgba(34, 197, 94, 0.3);
+}
+.import-warning {
+background: rgba(245, 158, 11, 0.15);
+color: #fcd34d;
+border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.fixed-footer {
+position: fixed;
+bottom: 0;
+left: 0;
+right: 0;
+display: flex;
+justify-content: center;
+gap: 16px;
+padding: 12px 0;
+background: rgba(10, 16, 30, 0.9);
+backdrop-filter: blur(10px);
+-webkit-backdrop-filter: blur(10px);
+border-top: 1px solid var(--border);
+z-index: 1000;
+flex-wrap: nowrap;
+}
+.nav-btn {
+background: rgba(255, 255, 255, 0.08);
+color: white;
+padding: 10px 16px;
+border-radius: 30px;
+display: flex;
+align-items: center;
+gap: 8px;
+font-weight: 600;
+transition: all 0.3s ease;
+white-space: nowrap;
+min-width: 0;
+}
+.nav-btn.active {
+background: var(--primary);
+box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+}
+.nav-btn:hover:not(.active) {
+background: rgba(255,255,255,0.15);
+}
+.modal-overlay {
+position: fixed;
+top: 0;
+left: 0;
+right: 0;
+bottom: 0;
+background: rgba(0, 0, 0, 0.6);
+backdrop-filter: blur(8px);
+-webkit-backdrop-filter: blur(8px);
+display: none;
+justify-content: center;
+align-items: center;
+z-index: 2000;
+}
+.modal-content {
+background: rgba(18, 26, 42, 0.95);
+border: 1px solid var(--border);
+border-radius: 16px;
+padding: 24px;
+width: 90%;
+max-width: 400px;
+text-align: center;
+box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+backdrop-filter: blur(16px);
+}
+.modal-title {
+font-size: 1.25rem;
+font-weight: 700;
+margin-bottom: 12px;
+color: white;
+}
+.modal-body {
+font-size: 1rem;
+color: #cbd5e1;
+margin-bottom: 24px;
+line-height: 1.5;
+}
+.modal-footer {
+display: flex;
+gap: 12px;
+justify-content: center;
+}
+.modal-footer button {
+flex: 1;
+justify-content: center;
+padding: 12px 0;
+min-width: 100px;
+}
+@media (max-width: 425px) {
+.nav-btn span {
+display: none;
+}
+.nav-btn {
+padding: 10px;
+width: auto;
+min-width: auto;
+justify-content: center;
+gap: 0;
+}
+}
+@media (max-width: 600px) {
+.logs-actions {
+flex-direction: column;
+gap: 8px;
+}
+.file-label,
+.btn-primary {
+width: 100%;
+justify-content: center;
+}
+}
+.editable-list {
+display: flex;
+flex-wrap: wrap;
+justify-content: flex-start;
+gap: 6px;
+margin-top: 6px;
+margin-bottom: 8px;
+}
+.editable-item {
+background: var(--bubble-bg);
+padding: 4px 10px;
+border-radius: 12px;
+display: flex;
+align-items: center;
+gap: 6px;
+}
+.editable-item .remove-btn {
+color: var(--error);
+cursor: pointer;
+font-size: 0.8rem;
+}
+.editable-item .remove-btn:hover {
+color: #f87171;
+}
+.settings-container .setting-group label,
+.settings-container h3,
+.settings-container .editable-section label {
+text-align: left;
+display: block;
+margin-left: 0;
+}
+.editable-section {
+display: flex;
+flex-direction: row;
+align-items: center;
+gap: 8px;
+margin: 12px 0;
+flex-wrap: wrap;
+}
+.editable-section input[type="text"] {
+flex: 1;
+min-width: 180px;
+max-width: 250px;
+}
+.editable-section button {
+margin-top: 0;
+padding: 8px 12px;
+font-size: 0.9rem;
+white-space: nowrap;
+}
+.settings-copyright {
+    text-align: center;
+    color: #ffffff;
+    font-size: 0.9rem;
+    margin-top: 25px;
+    opacity: 0.7;
+    font-weight: 600;
+    padding-bottom: 10px;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #111827;
+}
+::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 3px;
+}
+</style></head>
+<body>
+<div class="container">
+<div id="log-form-page" class="page active">
+<div class="form-container">
+<div class="form-grid">
+<div class="form-group"> <label for="callsign">对方呼号 <span style="color:red">*</span></label> <input type="text" id="callsign" placeholder="例如：BA1AA"> </div>
+<div class="form-group"> <label for="frequency">频率 (MHz) <span style="color:red">*</span></label> <input type="text" id="frequency" placeholder="例如：14.270">
+<div class="bubbles-container" id="freq-bubbles"></div>
+</div>
+<div class="form-group"> <label for="mode">模式 <span style="color:red">*</span></label> <input type="text" id="mode" placeholder="例如：SSB">
+<div class="bubbles-container" id="mode-bubbles"></div>
+</div>
+<div class="form-group"> <label for="utc-time">UTC 时间</label> <input type="datetime-local" id="utc-time"> </div>
+<div class="form-group"> <label for="my-report">我方信号报告 <span style="color:red">*</span></label> <input type="text" id="my-report" placeholder="例如：59"> <div class="bubbles-container" id="my-report-bubbles"></div> </div>
+<div class="form-group"> <label for="their-report">对方信号报告 <span style="color:red">*</span></label> <input type="text" id="their-report" placeholder="例如：59"> <div class="bubbles-container" id="their-report-bubbles"></div> </div>
+<div class="form-group"> <label for="my-power">我方功率</label> <input type="text" id="my-power" placeholder="例如：100">
+<div class="bubbles-container" id="my-power-bubbles"></div>
+</div>
+<div class="form-group"> <label for="power">对方功率</label> <input type="text" id="power" placeholder="例如：50">
+<div class="bubbles-container" id="power-bubbles"></div>
+</div>
+<div class="form-group">
+<label for="my-equipment">我的设备</label>
+<input type="text" id="my-equipment" placeholder="例如：IC-7300">
+<div class="bubbles-container" id="my-equip-bubbles"></div>
+</div>
+<div class="form-group">
+<label for="equipment">对方设备</label>
+<input type="text" id="equipment" placeholder="例如：IC-7300">
+<div class="bubbles-container" id="equip-bubbles"></div>
+</div>
+<div class="form-group">
+<label for="my-antenna">我的天线</label>
+<input type="text" id="my-antenna" placeholder="例如：垂直天线">
+<div class="bubbles-container" id="my-antenna-bubbles"></div>
+</div>
+<div class="form-group">
+<label for="antenna">对方天线</label>
+<input type="text" id="antenna" placeholder="例如：垂直天线">
+<div class="bubbles-container" id="antenna-bubbles"></div>
+</div>
+<div class="form-group">
+<label for="my-qth">我的 QTH (位置)</label>
+<input type="text" id="my-qth" placeholder="例如：上海">
+</div>
+<div class="form-group">
+<label for="qth">对方 QTH (位置)</label>
+<input type="text" id="qth" placeholder="例如：北京">
+</div>
+<div class="form-group">
+<label for="my-grid">我的网格 (Grid)</label>
+<input type="text" id="my-grid" placeholder="例如：PM05">
+</div>
+<div class="form-group">
+<label for="their-grid">对方网格 (Grid)</label>
+<input type="text" id="their-grid" placeholder="例如：OM91">
+</div>
+<div class="form-group"> <label for="notes">备注</label> <textarea id="notes" placeholder="输入通联备注..."></textarea> </div>
+</div>
+<div class="btn-group">
+<button class="btn-primary" id="add-log"> <i class="fas fa-plus"></i> <span>添加通联记录</span> </button>
+<button class="btn-warning" id="update-log" style="display: none;"> <i class="fas fa-edit"></i> <span>更新记录</span> </button>
+<button class="btn-secondary" id="cancel-edit" style="display: none;"> <i class="fas fa-times"></i> <span>取消</span> </button>
+<button class="btn-secondary" id="clear-form"> <i class="fas fa-eraser"></i> <span>清空表单</span> </button>
+</div>
+</div>
+</div>
+<div id="logs-page" class="page">
+<div class="logs-header">
+<div class="search-container">
+<input type="text" id="log-search" placeholder="搜索" style="width: 100%; padding: 12px 15px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0, 0, 0, 0.2); color: white; font-size: 1rem;">
+</div>
+<div class="logs-title-actions">
+<h2 id="logs-title">0 条记录</h2>
+<div class="logs-actions">
+<label class="file-label"> <i class="fas fa-file-import"></i> <span>导入 ADI</span> <input type="file" id="import-adi" class="file-input" accept=".adi,.ADI" multiple> </label>
+<button class="btn-primary" id="export-adi"> <i class="fas fa-file-export"></i> <span>导出 ADI</span> </button>
+</div>
+</div>
+</div>
+<div class="import-status" id="import-status"></div>
+<div class="logs-container" id="logs-container">
+<div class="empty-state"> <i class="fas fa-satellite-dish"></i>
+<h3>暂无通联记录</h3>
+<p>添加您的第一次通联记录吧！</p>
+</div>
+</div>
+</div>
+<div id="settings-page" class="page">
+<div class="settings-container">
+<div class="setting-group"> <label for="my-callsign">我的呼号</label> <input type="text" id="my-callsign" placeholder="例如：BA1ABC"> </div>
+<div class="setting-group" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-bottom: 5px;">
+<label for="utc-plus8-toggle" style="margin-bottom: 0;">显示 UTC+8 (北京时间)</label>
+<input type="checkbox" id="utc-plus8-toggle" style="width: auto; margin: 0; transform: scale(1.5);">
+</div>
+<h3 style="text-align: left; margin: 20px 0 10px;">可选字段</h3>
+<div class="setting-group" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0;">
+<label for="show-equipment-both" style="margin-bottom: 0;">启用"设备"（双方）</label>
+<input type="checkbox" id="show-equipment-both" style="width: auto; margin: 0; transform: scale(1.5);">
+</div>
+<div class="setting-group" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0;">
+<label for="show-power-both" style="margin-bottom: 0;">启用"功率"（双方）</label>
+<input type="checkbox" id="show-power-both" style="width: auto; margin: 0; transform: scale(1.5);">
+</div>
+<div class="setting-group" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0;">
+<label for="show-antenna-both" style="margin-bottom: 0;">启用"天线"（双方）</label>
+<input type="checkbox" id="show-antenna-both" style="width: auto; margin: 0; transform: scale(1.5);">
+</div>
+<div class="setting-group" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0;">
+<label for="show-qth-both" style="margin-bottom: 0;">启用"QTH"（双方）</label>
+<input type="checkbox" id="show-qth-both" style="width: auto; margin: 0; transform: scale(1.5);">
+</div>
+<div class="setting-group" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0;">
+<label for="show-grid-both" style="margin-bottom: 0;">启用"网格"（双方）</label>
+<input type="checkbox" id="show-grid-both" style="width: auto; margin: 0; transform: scale(1.5);">
+</div>
+<h3 style="text-align: left; margin: 20px 0 10px;">自动同步设置</h3>
+<div class="setting-group" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0;">
+<label for="auto-upload-toggle" style="margin-bottom: 0;">自动上传</label>
+<input type="checkbox" id="auto-upload-toggle" style="width: auto; margin: 0; transform: scale(1.5);">
+</div>
+<div class="setting-group" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0;">
+<label for="auto-pull-toggle" style="margin-bottom: 0;">自动拉取</label>
+<input type="checkbox" id="auto-pull-toggle" style="width: auto; margin: 0; transform: scale(1.5);">
+</div>
+<h3 style="text-align: left; margin: 20px 0 10px;">快捷填充</h3>
+<div class="editable-section"> <label>频率 (MHz)</label>
+<div class="editable-list" id="freq-list"></div> <input type="text" id="new-freq" placeholder="添加新频率"> <button class="btn-secondary" id="add-freq">添加</button>
+</div>
+<div class="editable-section"> <label>模式</label>
+<div class="editable-list" id="mode-list"></div> <input type="text" id="new-mode" placeholder="添加新模式"> <button class="btn-secondary" id="add-mode">添加</button>
+</div>
+<div class="editable-section"> <label>信号报告</label>
+<div class="editable-list" id="report-list"></div> <input type="text" id="new-report" placeholder="添加新信号报告"> <button class="btn-secondary" id="add-report">添加</button>
+</div>
+<div class="editable-section"> <label>功率</label>
+<div class="editable-list" id="power-list"></div> <input type="text" id="new-power" placeholder="添加新功率"> <button class="btn-secondary" id="add-power">添加</button>
+</div>
+<div class="editable-section"> <label>设备</label>
+<div class="editable-list" id="equip-list"></div> <input type="text" id="new-equip" placeholder="添加新设备"> <button class="btn-secondary" id="add-equip">添加</button>
+</div>
+<div class="editable-section"> <label>天线</label>
+<div class="editable-list" id="antenna-list"></div> <input type="text" id="new-antenna" placeholder="添加新天线"> <button class="btn-secondary" id="add-antenna">添加</button>
+</div>
+<div class="settings-copyright">©BI7DIE</div>
+</div>
+</div>
+<div id="custom-modal" class="modal-overlay">
+<div class="modal-content">
+<div id="modal-title" class="modal-title">提示</div>
+<div id="modal-body" class="modal-body">确认要执行此操作吗？</div>
+<div class="modal-footer">
+<button id="modal-cancel" class="btn-secondary">取消</button>
+<button id="modal-confirm" class="btn-primary">确认</button>
+</div>
+</div>
+</div>
+<div class="fixed-footer">
+<button class="nav-btn active" id="log-form-btn"> <i class="fas fa-edit"></i> <span>填写记录</span> </button>
+<button class="nav-btn" id="logs-btn"> <i class="fas fa-list"></i> <span>通联记录</span> </button>
+<button class="nav-btn" id="settings-btn"> <i class="fas fa-cog"></i> <span>设置</span> </button>
+<button class="nav-btn" id="scroll-to-top-btn" style="display: none;">
+<i class="fas fa-arrow-up"></i>
+<span>顶部</span>
+</button>
+<button class="nav-btn" id="qrz-btn"> <i class="fas fa-globe"></i> <span>QRZ 网站</span> </button>
+</div>
+<script>
+const DEFAULT_CONFIG = {
+frequencies: ['438.5', '439.8', '14.270', '28.500', '50.110'],
+modes: ['SSB', 'CW', 'FT8', 'FM', 'AM'],
+equipment: ['UVK6', 'UVK5', 'UV5R', 'TK11', '5Rmini', 'SHX8800', 'SHX8600', '八重洲 FT991', '八重洲 300D', '即时通 D9000'],
+antennas: ['原装', '八木', '拉杆', 'MA01', '正 V'],
+power: ['1', '3', '5', '8', '15', '25', '50'],
+signalReports: ['59', '58', '49', '48'],
+useUTCPlus8: false,
+showEquipmentBoth: false,
+showAntennaBoth: false,
+showQthBoth: false,
+showGridBoth: false,
+showPowerBoth: false,
+autoUpload: false,
+autoPull: false
+};
+let savedConfig = {};
+try {
+    savedConfig = JSON.parse(localStorage.getItem('config')) || {};
+} catch (e) {
+    savedConfig = {};
+}
+let CONFIG = { ...DEFAULT_CONFIG, ...savedConfig };
+let MY_CALLSIGN = localStorage.getItem('myCallsign') || '';
+let autoPullInterval = null;
+let autoUploadInterval = null;
+const logFormPage = document.getElementById('log-form-page');
+const logsPage = document.getElementById('logs-page');
+const settingsPage = document.getElementById('settings-page');
+const logFormBtn = document.getElementById('log-form-btn');
+const logsBtn = document.getElementById('logs-btn');
+const settingsBtn = document.getElementById('settings-btn');
+const qrzBtn = document.getElementById('qrz-btn');
+const addLogBtn = document.getElementById('add-log');
+const updateLogBtn = document.getElementById('update-log');
+const cancelEditBtn = document.getElementById('cancel-edit');
+const clearFormBtn = document.getElementById('clear-form');
+const logsContainer = document.getElementById('logs-container');
+const utcTimeInput = document.getElementById('utc-time');
+const importAdiBtn = document.getElementById('import-adi');
+const exportAdiBtn = document.getElementById('export-adi');
+const importStatus = document.getElementById('import-status');
+const logsTitle = document.getElementById('logs-title');
+const logSearchInput = document.getElementById('log-search');
+const utcPlus8Toggle = document.getElementById('utc-plus8-toggle');
+const scrollToTopBtn = document.getElementById('scroll-to-top-btn');
+const customModal = document.getElementById('custom-modal');
+const modalTitle = document.getElementById('modal-title');
+const modalBody = document.getElementById('modal-body');
+const modalConfirmBtn = document.getElementById('modal-confirm');
+const modalCancelBtn = document.getElementById('modal-cancel');
+function showModal(title, message, showCancel = true) {
+return new Promise((resolve) => {
+modalTitle.textContent = title;
+modalBody.textContent = message;
+modalCancelBtn.style.display = showCancel ? 'flex' : 'none';
+customModal.style.display = 'flex';
+const onClose = () => {
+customModal.style.display = 'none';
+modalConfirmBtn.removeEventListener('click', onConfirm);
+modalCancelBtn.removeEventListener('click', onCancel);
+};
+const onConfirm = () => { onClose(); resolve(true); };
+const onCancel = () => { onClose(); resolve(false); };
+modalConfirmBtn.addEventListener('click', onConfirm);
+modalCancelBtn.addEventListener('click', onCancel);
+});
+}
+let logs = JSON.parse(localStorage.getItem('hamLogs')) || [];
+let currentEditId = null;
+function checkCallsignSet() {
+const callsign = document.getElementById('my-callsign')?.value.trim() || MY_CALLSIGN;
+return callsign.length > 0;
+}
+function getCurrentCallsign() {
+return document.getElementById('my-callsign')?.value.trim() || MY_CALLSIGN;
+}
+function logsToAdifString(logsArray) {
+const MY_CALL = getCurrentCallsign() || 'YOUR_CALLSIGN';
+let adi = 'Generated by Log\n<ADIF_VER:5>3.1.0\n<PROGRAMID:7>Log\n<PROGRAMVERSION:5>1.0.0\n';
+adi += `<STATION_CALLSIGN:${MY_CALL.length}>${MY_CALL}\n<EOH>\n`;
+logsArray.forEach(log => {
+const band = getBandFromFrequency(log.frequency) || '';
+const qth = log.qth || '';
+const rig = log.equipment || '';
+const antenna = log.antenna || '';
+const txPwr = log.myPower || '';
+const rxPwr = log.power || '';
+const notes = log.notes || '';
+const dateStr = log.utcTime.replace(/-/g, '').substring(0, 8);
+const timeStr = log.utcTime.substring(11, 16).replace(':', '');
+adi += `<BAND:${band.length}>${band}\n<CALL:${log.callsign.length}>${log.callsign}\n`;
+adi += `<STATION_CALLSIGN:${MY_CALL.length}>${MY_CALL}\n`;
+if (notes) adi += `<NOTES:${notes.length}>${notes}\n<NOTES_INTL:${notes.length}>${notes}\n`;
+adi += `<QSO_DATE:8>${dateStr}\n<FREQ_RX:${log.frequency.length}>${log.frequency}\n`;
+adi += `<FREQ:${log.frequency.length}>${log.frequency}\n<MODE:${log.mode.length}>${log.mode}\n`;
+adi += `<RX_PWR:${rxPwr.length}>${rxPwr}\n<TX_PWR:${txPwr.length}>${txPwr}\n`;
+adi += `<RST_RCVD:${(log.theirReport || '').length}>${log.theirReport || ''}\n`;
+adi += `<RST_SENT:${(log.myReport || '').length}>${log.myReport || ''}\n`;
+adi += `<TIME_ON:4>${timeStr}\n<RIG:${rig.length}>${rig}\n<ANTENNA:${antenna.length}>${antenna}\n`;
+adi += `<QTH:${qth.length}>${qth}\n`;
+if (log.myQth) adi += `<MY_CITY:${log.myQth.length}>${log.myQth}\n`;
+if (log.myGrid) adi += `<MY_GRIDSQUARE:${log.myGrid.length}>${log.myGrid}\n`;
+if (log.theirGrid) adi += `<GRIDSQUARE:${log.theirGrid.length}>${log.theirGrid}\n`;
+if (log.myEquipment) adi += `<MY_RIG:${log.myEquipment.length}>${log.myEquipment}\n`;
+if (log.myAntenna) adi += `<MY_ANTENNA:${log.myAntenna.length}>${log.myAntenna}\n`;
+adi += `<EOR>\n`;
+});
+return adi;
+}
+async function autoUploadLogs() {
+const callsign = getCurrentCallsign();
+if (!callsign) {
+await showModal('提示', '请先在设置中填写您的呼号', false);
+document.getElementById('auto-upload-toggle').checked = false;
+CONFIG.autoUpload = false;
+saveConfig();
+return;
+}
+const adifData = logsToAdifString(logs);
+const encodedData = encodeURIComponent(adifData);
+const postData = `key=ARS${encodeURIComponent(callsign)}&value=${encodedData}`;
+try {
+const response = await fetch('https://textdb.online/update/?v=1', {
+method: 'POST',
+headers: {
+'Content-Type': 'application/x-www-form-urlencoded'
+},
+body: postData
+});
+if (response.ok && typeof Android !== 'undefined') {
+Android.showToast('自动上传成功');
+} else if (response.ok) {
+console.log('Auto upload success');
+} else {
+console.error('Auto upload failed:', response.status);
+}
+} catch (error) {
+console.error('Auto upload error:', error);
+}
+}
+function parseAdifToLogs(adifText) {
+const parsedLogs = [];
+const lines = adifText.split('\n');
+let currentRecord = {};
+for (let line of lines) {
+line = line.trim();
+if (!line || line.startsWith('Generated by') || line.startsWith('<ADIF_VER') ||
+line.startsWith('<PROGRAMID') || line.startsWith('<PROGRAMVERSION') ||
+line.startsWith('<STATION_CALLSIGN:') || line === '<EOH>') {
+continue;
+}
+if (line === '<EOR>') {
+if (currentRecord.CALL && currentRecord.FREQ && currentRecord.MODE &&
+currentRecord.QSO_DATE && currentRecord.TIME_ON) {
+try {
+const year = currentRecord.QSO_DATE.substring(0, 4);
+const month = currentRecord.QSO_DATE.substring(4, 6);
+const day = currentRecord.QSO_DATE.substring(6, 8);
+const hours = currentRecord.TIME_ON.substring(0, 2).padStart(2, '0');
+const minutes = currentRecord.TIME_ON.substring(2, 4).padStart(2, '0');
+const utcTime = `${year}-${month}-${day}T${hours}:${minutes}`;
+const log = {
+id: Date.now() + Math.random(),
+callsign: currentRecord.CALL,
+frequency: currentRecord.FREQ,
+mode: currentRecord.MODE,
+utcTime: utcTime,
+myReport: currentRecord.RST_SENT || '',
+theirReport: currentRecord.RST_RCVD || '',
+myPower: currentRecord.TX_PWR || '',
+myEquipment: currentRecord.MY_RIG || '',
+myAntenna: currentRecord.MY_ANTENNA || '',
+myQth: currentRecord.MY_CITY || '',
+myGrid: currentRecord.MY_GRIDSQUARE || '',
+theirGrid: currentRecord.GRIDSQUARE || '',
+power: currentRecord.RX_PWR || currentRecord.TX_PWR || '',
+equipment: currentRecord.RIG || '',
+antenna: currentRecord.ANTENNA || '',
+qth: currentRecord.QTH || '',
+notes: currentRecord.NOTES || ''
+};
+parsedLogs.push(log);
+} catch (e) {
+console.warn('Parse log error:', e);
+}
+}
+currentRecord = {};
+} else {
+const fieldMatch = line.match(/<(\w+):\d+>([^<]+)/);
+if (fieldMatch) {
+currentRecord[fieldMatch[1]] = fieldMatch[2].trim();
+}
+}
+}
+return parsedLogs;
+}
+async function autoPullLogs() {
+const callsign = getCurrentCallsign();
+if (!callsign) return;
+try {
+const response = await fetch(`https://textdb.online/ARS${encodeURIComponent(callsign)}`, {
+method: 'GET',
+headers: {
+'Content-Type': 'text/plain'
+}
+});
+if (response.status === 200) {
+const adifText = await response.text();
+if (adifText && adifText.trim().length > 0) {
+const newLogs = parseAdifToLogs(adifText);
+if (newLogs.length > 0) {
+let importedCount = 0;
+newLogs.forEach(newLog => {
+const exists = logs.some(existing =>
+existing.callsign === newLog.callsign &&
+existing.mode === newLog.mode &&
+existing.utcTime === newLog.utcTime
+);
+if (!exists) {
+logs.unshift(newLog);
+importedCount++;
+}
+});
+if (importedCount > 0) {
+localStorage.setItem('hamLogs', JSON.stringify(logs));
+if (document.querySelector('.page.active')?.id === 'logs-page') {
+renderLogs();
+}
+if (typeof Android !== 'undefined') {
+Android.showToast(`拉取并导入 ${importedCount} 条新记录`);
+}
+}
+}
+}
+}
+} catch (error) {
+console.error('Auto pull error:', error);
+}
+}
+async function toggleAutoUpload(enabled) {
+if (enabled && !checkCallsignSet()) {
+await showModal('提示', '请先在设置中填写您的呼号，再开启自动上传', false);
+document.getElementById('auto-upload-toggle').checked = false;
+CONFIG.autoUpload = false;
+saveConfig();
+return;
+}
+CONFIG.autoUpload = enabled;
+saveConfig();
+if (enabled) {
+await autoUploadLogs();
+if (autoUploadInterval) clearInterval(autoUploadInterval);
+autoUploadInterval = setInterval(autoUploadLogs, 120000);
+} else {
+if (autoUploadInterval) {
+clearInterval(autoUploadInterval);
+autoUploadInterval = null;
+}
+}
+}
+async function toggleAutoPull(enabled) {
+if (enabled && !checkCallsignSet()) {
+await showModal('提示', '请先在设置中填写您的呼号，再开启自动拉取', false);
+document.getElementById('auto-pull-toggle').checked = false;
+CONFIG.autoPull = false;
+saveConfig();
+return;
+}
+CONFIG.autoPull = enabled;
+saveConfig();
+if (enabled) {
+autoPullLogs();
+if (autoPullInterval) clearInterval(autoPullInterval);
+autoPullInterval = setInterval(autoPullLogs, 10000);
+} else {
+if (autoPullInterval) {
+clearInterval(autoPullInterval);
+autoPullInterval = null;
+}
+}
+}
+function parseUtcStringToDateParts(utcTimeStr) {
+const match = utcTimeStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+if (!match) return null;
+return {
+year: parseInt(match[1]),
+month: parseInt(match[2]),
+day: parseInt(match[3]),
+hours: parseInt(match[4]),
+minutes: parseInt(match[5])
+};
+}
+function getRealUtcTimeFromInput() {
+const rawValue = utcTimeInput.value;
+if (!rawValue) return '';
+if (!CONFIG.useUTCPlus8) return rawValue;
+const p = parseUtcStringToDateParts(rawValue);
+if (!p) return rawValue;
+const d = new Date(Date.UTC(p.year, p.month - 1, p.day, p.hours, p.minutes));
+d.setUTCHours(d.getUTCHours() - 8);
+return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}T${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+function refreshUTCTime() {
+const now = new Date();
+let year, month, day, hours, minutes;
+let suffix = ' UTC';
+let utcHours = now.getUTCHours();
+let utcMinutes = now.getUTCMinutes();
+let utcDay = now.getUTCDate();
+let utcMonth = now.getUTCMonth() + 1;
+let utcYear = now.getUTCFullYear();
+if (CONFIG.useUTCPlus8) {
+let totalMinutes = utcHours * 60 + utcMinutes + (8 * 60);
+hours = Math.floor(totalMinutes / 60) % 24;
+minutes = totalMinutes % 60;
+let dayOffset = Math.floor(totalMinutes / (24 * 60));
+const tempDate = new Date(Date.UTC(utcYear, utcMonth - 1, utcDay + dayOffset, hours, minutes));
+year = tempDate.getUTCFullYear();
+month = tempDate.getUTCMonth() + 1;
+day = tempDate.getUTCDate();
+hours = tempDate.getUTCHours();
+minutes = tempDate.getUTCMinutes();
+suffix = ' UTC+8';
+} else {
+year = utcYear;
+month = utcMonth;
+day = utcDay;
+hours = utcHours;
+minutes = utcMinutes;
+}
+const formattedTime = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+utcTimeInput.value = formattedTime;
+const label = document.querySelector('label[for="utc-time"]');
+label.textContent = `通联时间 (${suffix})`;
+}
+function formatLogTime(utcTimeStr) {
+const parts = parseUtcStringToDateParts(utcTimeStr);
+if (!parts) return `Invalid Time (${utcTimeStr})`;
+let { year, month, day, hours, minutes } = parts;
+let suffix = ' UTC';
+if (CONFIG.useUTCPlus8) {
+let totalMinutes = hours * 60 + minutes + (8 * 60);
+hours = Math.floor(totalMinutes / 60) % 24;
+minutes = totalMinutes % 60;
+let dayOffset = Math.floor(totalMinutes / (24 * 60));
+const tempDate = new Date(Date.UTC(year, month - 1, day + dayOffset, hours, minutes));
+year = tempDate.getUTCFullYear();
+month = tempDate.getUTCMonth() + 1;
+day = tempDate.getUTCDate();
+hours = tempDate.getUTCHours();
+minutes = tempDate.getUTCMinutes();
+suffix = ' UTC+8';
+}
+return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${suffix}`;
+}
+function getCallSignFromStorage() {
+return MY_CALLSIGN || 'YOUR_CALLSIGN';
+}
+function applyBothFieldVisibility() {
+toggleFieldPair('my-equipment', 'equipment', CONFIG.showEquipmentBoth);
+toggleFieldPair('my-antenna', 'antenna', CONFIG.showAntennaBoth);
+toggleFieldPair('my-qth', 'qth', CONFIG.showQthBoth);
+toggleFieldPair('my-grid', 'their-grid', CONFIG.showGridBoth);
+toggleFieldPair('my-power', 'power', CONFIG.showPowerBoth);
+}
+function toggleFieldPair(myId, theirId, show) {
+const myGroup = document.getElementById(myId)?.closest('.form-group');
+const theirGroup = document.getElementById(theirId)?.closest('.form-group');
+if (myGroup) myGroup.style.display = show ? '' : 'none';
+if (theirGroup) theirGroup.style.display = show ? '' : 'none';
+}
+const autoUppercaseFields = [
+'callsign', 'mode', 'equipment', 'antenna',
+'my-equipment', 'my-antenna',
+'my-report', 'their-report', 'my-power', 'power'
+];
+autoUppercaseFields.forEach(id => {
+const el = document.getElementById(id);
+if (el) {
+el.addEventListener('input', function () {
+const start = this.selectionStart;
+this.value = this.value.toUpperCase();
+this.setSelectionRange(start, start);
+});
+}
+});
+['my-grid', 'their-grid'].forEach(id => {
+const el = document.getElementById(id);
+if (el) {
+el.addEventListener('input', function () {
+const start = this.selectionStart;
+this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+this.setSelectionRange(start, start);
+});
+}
+});
+function syncInputWithBubbles(inputId, containerId, items) {
+const input = document.getElementById(inputId);
+const container = document.getElementById(containerId);
+if (!input || !container) return;
+input.addEventListener('input', () => {
+const inputValue = input.value.trim();
+container.querySelectorAll('.bubble').forEach(b => b.classList.remove('active'));
+if (inputValue) {
+const matchedBubble = Array.from(container.querySelectorAll('.bubble')).find(b => b.textContent.trim() === inputValue);
+if (matchedBubble) matchedBubble.classList.add('active');
+}
+});
+}
+function createBubbles() {
+const createBubblesFor = (containerId, items, inputId) => {
+const container = document.getElementById(containerId);
+if (!container) return;
+container.innerHTML = '';
+items.forEach(item => {
+const bubble = document.createElement('div');
+bubble.className = 'bubble';
+bubble.textContent = item;
+bubble.addEventListener('click', () => {
+document.getElementById(inputId).value = item;
+setActiveBubble(container, bubble);
+document.getElementById(inputId).dispatchEvent(new Event('input'));
+});
+container.appendChild(bubble);
+});
+};
+createBubblesFor('freq-bubbles', CONFIG.frequencies, 'frequency');
+createBubblesFor('mode-bubbles', CONFIG.modes, 'mode');
+createBubblesFor('power-bubbles', CONFIG.power, 'power');
+createBubblesFor('my-power-bubbles', CONFIG.power, 'my-power');
+createBubblesFor('my-report-bubbles', CONFIG.signalReports, 'my-report');  // 新增
+createBubblesFor('their-report-bubbles', CONFIG.signalReports, 'their-report');  // 新增
+createBubblesFor('equip-bubbles', CONFIG.equipment, 'equipment');
+createBubblesFor('antenna-bubbles', CONFIG.antennas, 'antenna');
+createBubblesFor('my-equip-bubbles', CONFIG.equipment, 'my-equipment');
+createBubblesFor('my-antenna-bubbles', CONFIG.antennas, 'my-antenna');
+}
+function setActiveBubble(container, activeBubble) {
+container.querySelectorAll('.bubble').forEach(b => b.classList.remove('active'));
+activeBubble.classList.add('active');
+}
+refreshUTCTime();
+renderLogs();
+createBubbles();
+clearForm();
+loadSettings();
+setupScrollToTopButton();
+setupRealTimeSettings();
+if (logSearchInput) logSearchInput.addEventListener('input', () => renderLogs());
+syncInputWithBubbles('frequency', 'freq-bubbles', CONFIG.frequencies);
+syncInputWithBubbles('mode', 'mode-bubbles', CONFIG.modes);
+syncInputWithBubbles('power', 'power-bubbles', CONFIG.power);
+syncInputWithBubbles('my-power', 'my-power-bubbles', CONFIG.power);
+syncInputWithBubbles('my-report', 'my-report-bubbles', CONFIG.signalReports);
+syncInputWithBubbles('their-report', 'their-report-bubbles', CONFIG.signalReports);
+syncInputWithBubbles('equipment', 'equip-bubbles', CONFIG.equipment);
+syncInputWithBubbles('antenna', 'antenna-bubbles', CONFIG.antennas);
+syncInputWithBubbles('my-equipment', 'my-equip-bubbles', CONFIG.equipment);
+syncInputWithBubbles('my-antenna', 'my-antenna-bubbles', CONFIG.antennas);
+function showPage(pageId) {
+document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+document.getElementById(pageId).classList.add('active');
+document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+if (pageId === 'log-form-page') logFormBtn.classList.add('active');
+else if (pageId === 'logs-page') logsBtn.classList.add('active');
+else if (pageId === 'settings-page') settingsBtn.classList.add('active');
+const pageElement = document.getElementById(pageId);
+if (pageElement && pageElement.id !== 'log-form-page' && pageElement.scrollTop > 100) {
+scrollToTopBtn.style.display = 'inline-flex';
+} else {
+scrollToTopBtn.style.display = 'none';
+}
+if (pageId === 'log-form-page') {
+applyBothFieldVisibility();
+}
+if (pageId === 'settings-page') {
+document.getElementById('auto-upload-toggle').checked = CONFIG.autoUpload;
+document.getElementById('auto-pull-toggle').checked = CONFIG.autoPull;
+}
+}
+function clearForm() {
+document.getElementById('callsign').value = '';
+document.getElementById('frequency').value = '';
+document.getElementById('mode').value = '';
+document.getElementById('my-report').value = '';
+document.getElementById('their-report').value = '';
+document.getElementById('my-power').value = '';
+document.getElementById('my-equipment').value = '';
+document.getElementById('my-antenna').value = '';
+document.getElementById('my-qth').value = '';
+document.getElementById('my-grid').value = '';
+document.getElementById('their-grid').value = '';
+document.getElementById('power').value = '';
+document.getElementById('equipment').value = '';
+document.getElementById('antenna').value = '';
+document.getElementById('qth').value = '';
+document.getElementById('notes').value = '';
+refreshUTCTime();
+document.querySelectorAll('.bubble.active').forEach(b => b.classList.remove('active'));
+currentEditId = null;
+addLogBtn.style.display = 'inline-flex';
+updateLogBtn.style.display = 'none';
+cancelEditBtn.style.display = 'none';
+}
+logFormBtn.addEventListener('click', () => {
+refreshUTCTime();
+showPage('log-form-page');
+});
+logsBtn.addEventListener('click', () => {
+    if (logSearchInput.value.trim() !== '') {
+        logSearchInput.value = '';
+    }
+    renderLogs(); // 【修复】无论搜索框是否有内容，进入日志页都强制刷新列表
+    showPage('logs-page');
+});
+settingsBtn.addEventListener('click', () => {
+loadSettings();
+showPage('settings-page');
+});
+qrzBtn.addEventListener('click', () => {
+window.open('https://logbook.qrz.com/#', '_blank');
+});
+function editLog(logId) {
+const log = logs.find(l => l.id === logId);
+if (!log) return;
+document.getElementById('callsign').value = log.callsign;
+document.getElementById('frequency').value = log.frequency;
+document.getElementById('mode').value = log.mode;
+let displayTime = log.utcTime;
+if (CONFIG.useUTCPlus8) {
+const p = parseUtcStringToDateParts(log.utcTime);
+if (p) {
+const d = new Date(Date.UTC(p.year, p.month - 1, p.day, p.hours, p.minutes));
+d.setUTCHours(d.getUTCHours() + 8);
+displayTime = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}T${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+}
+document.getElementById('utc-time').value = displayTime;
+const suffix = CONFIG.useUTCPlus8 ? ' UTC+8' : ' UTC';
+document.querySelector('label[for="utc-time"]').textContent = `通联时间 (${suffix})`;
+document.getElementById('my-report').value = log.myReport;
+document.getElementById('their-report').value = log.theirReport;
+document.getElementById('my-power').value = log.myPower || '';
+document.getElementById('my-equipment').value = log.myEquipment || '';
+document.getElementById('my-antenna').value = log.myAntenna || '';
+document.getElementById('my-qth').value = log.myQth || '';
+document.getElementById('my-grid').value = log.myGrid || '';
+document.getElementById('their-grid').value = log.theirGrid || '';
+document.getElementById('power').value = log.power || '';
+document.getElementById('equipment').value = log.equipment || '';
+document.getElementById('antenna').value = log.antenna || '';
+document.getElementById('qth').value = log.qth || '';
+document.getElementById('notes').value = log.notes || '';
+currentEditId = logId;
+addLogBtn.style.display = 'none';
+updateLogBtn.style.display = 'inline-flex';
+cancelEditBtn.style.display = 'inline-flex';
+showPage('log-form-page');
+}
+window.editLog = editLog;
+window.deleteLog = async function(logId) {
+const confirmed = await showModal('确认删除', '确定要删除这条通联记录吗？', true);
+if (confirmed) {
+logs = logs.filter(log => log.id !== logId);
+localStorage.setItem('hamLogs', JSON.stringify(logs));
+renderLogs();
+}
+};
+function renderLogs(scrollToId = null) {
+logs.sort((a, b) => {
+const dateA = new Date(a.utcTime.replace('T', ' ') + ' UTC');
+const dateB = new Date(b.utcTime.replace('T', ' ') + ' UTC');
+return dateB - dateA;
+});
+localStorage.setItem('hamLogs', JSON.stringify(logs));
+const searchTerm = logSearchInput ? logSearchInput.value.toLowerCase().trim() : '';
+let filteredLogs = logs;
+if (searchTerm) {
+filteredLogs = filteredLogs.filter(log => {
+const searchFields = [
+log.callsign, log.frequency, log.mode, log.equipment, log.antenna,
+log.qth, log.notes, log.utcTime,
+log.myEquipment, log.myAntenna, log.myQth, log.myGrid, log.theirGrid
+].map(f => f ? String(f).toLowerCase() : '');
+return searchFields.some(f => f.includes(searchTerm));
+});
+}
+logsTitle.textContent = `${filteredLogs.length} 条 (共 ${logs.length} 条)`;
+if (filteredLogs.length === 0) {
+logsContainer.innerHTML = `
+<div class="empty-state">
+<i class="fas fa-satellite-dish"></i>
+<h3>${searchTerm ? '未找到匹配的记录' : '暂无通联记录'}</h3>
+<p>${searchTerm ? '请尝试不同的搜索关键词' : '添加您的第一次通联记录吧！'}</p>
+</div>
+`;
+return;
+}
+logsContainer.innerHTML = '';
+filteredLogs.forEach(log => {
+const formattedDate = formatLogTime(log.utcTime);
+const hasNotes = !!log.notes;
+const logCard = document.createElement('div');
+logCard.className = 'log-card';
+logCard.id = `log-${log.id}`;
+logCard.innerHTML = `
+<div class="log-header">
+<div class="frequency">${log.frequency} MHz</div>
+<div class="mode">${log.mode}</div>
+</div>
+<div class="callsign">${log.callsign}</div>
+<div class="log-time">${formattedDate}</div>
+${hasNotes ? `<div class="log-notes"><strong>留言:</strong> ${log.notes}</div>` : ''}
+<div class="log-details">
+<div class="detail-item">
+<span class="detail-label">我方报告</span>
+<span class="detail-value">${log.myReport || '-'}</span>
+</div>
+<div class="detail-item">
+<span class="detail-label">对方报告</span>
+<span class="detail-value">${log.theirReport || '-'}</span>
+</div>
+<div class="detail-item">
+<span class="detail-label">我方功率</span>
+<span class="detail-value">${log.myPower || '-'}</span>
+</div>
+<div class="detail-item">
+<span class="detail-label">对方功率</span>
+<span class="detail-value">${log.power || '-'}</span>
+</div>
+<div class="detail-item">
+<span class="detail-label">我方设备</span>
+<span class="detail-value">${log.myEquipment || '-'}</span>
+</div>
+<div class="detail-item">
+<span class="detail-label">对方设备</span>
+<span class="detail-value">${log.equipment || '-'}</span>
+</div>
+<div class="detail-item">
+<span class="detail-label">我方天线</span>
+<span class="detail-value">${log.myAntenna || '-'}</span>
+</div>
+<div class="detail-item">
+<span class="detail-label">对方天线</span>
+<span class="detail-value">${log.antenna || '-'}</span>
+</div>
+<div class="detail-item">
+<span class="detail-label">我方 QTH</span>
+<span class="detail-value">${log.myQth || '-'}</span>
+</div>
+<div class="detail-item">
+<span class="detail-label">对方 QTH</span>
+<span class="detail-value">${log.qth || '-'}</span>
+</div>
+<div class="detail-item">
+<span class="detail-label">我方网格</span>
+<span class="detail-value">${log.myGrid || '-'}</span>
+</div>
+<div class="detail-item">
+<span class="detail-label">对方网格</span>
+<span class="detail-value">${log.theirGrid || '-'}</span>
+</div>
+<div class="log-actions">
+<button class="btn-warning btn-sm" onclick="editLog(${log.id})">
+<i class="fas fa-edit"></i> 编辑
+</button>
+<button class="btn-danger btn-sm" onclick="deleteLog(${log.id})">
+<i class="fas fa-trash"></i> 删除
+</button>
+</div>
+</div>
+`;
+const details = logCard.querySelector('.log-details');
+logCard.addEventListener('click', (e) => {
+if (e.target.closest('.log-actions button')) return;
+if (details.style.display === 'grid') {
+details.style.display = 'none';
+logCard.classList.remove('expanded');
+} else {
+details.style.display = 'grid';
+logCard.classList.add('expanded');
+}
+});
+logsContainer.appendChild(logCard);
+});
+if (scrollToId !== null) {
+setTimeout(() => {
+const targetCard = document.getElementById(`log-${scrollToId}`);
+if (targetCard) {
+logsPage.scrollTo({ top: targetCard.offsetTop - 120, behavior: 'auto' });
+}
+}, 0);
+}
+}
+updateLogBtn.addEventListener('click', async () => {
+if (!currentEditId) return;
+const callsign = document.getElementById('callsign').value.trim();
+const frequency = document.getElementById('frequency').value.trim();
+const mode = document.getElementById('mode').value.trim();
+const utcTime = getRealUtcTimeFromInput();
+const myReport = document.getElementById('my-report').value.trim();
+const theirReport = document.getElementById('their-report').value.trim();
+const myPower = document.getElementById('my-power').value.trim();
+const myEquipment = document.getElementById('my-equipment').value.trim();
+const myAntenna = document.getElementById('my-antenna').value.trim();
+const myQth = document.getElementById('my-qth').value.trim();
+const myGrid = document.getElementById('my-grid').value.trim();
+const theirGrid = document.getElementById('their-grid').value.trim();
+const power = document.getElementById('power').value.trim();
+const equipment = document.getElementById('equipment').value.trim();
+const antenna = document.getElementById('antenna').value.trim();
+const qth = document.getElementById('qth').value.trim();
+const notes = document.getElementById('notes').value.trim();
+if (!callsign || !frequency || !mode || !utcTime || !parseUtcStringToDateParts(utcTime)) {
+await showModal('表单错误', '请填写有效的呼号、频率、模式和时间', false);
+return;
+}
+const logIndex = logs.findIndex(log => log.id === currentEditId);
+if (logIndex !== -1) {
+logs[logIndex] = {
+...logs[logIndex],
+callsign,
+frequency,
+mode,
+utcTime,
+myReport,
+theirReport,
+myPower,
+myEquipment,
+myAntenna,
+myQth,
+myGrid,
+theirGrid,
+power,
+equipment,
+antenna,
+qth,
+notes
+};
+showPage('logs-page');
+renderLogs(currentEditId);
+clearForm();
+if (CONFIG.autoUpload) {
+autoUploadLogs();
+}
+}
+});
+cancelEditBtn.addEventListener('click', clearForm);
+addLogBtn.addEventListener('click', async () => {
+const callsign = document.getElementById('callsign').value.trim();
+const frequency = document.getElementById('frequency').value.trim();
+const mode = document.getElementById('mode').value.trim();
+const utcTime = getRealUtcTimeFromInput();
+const myReport = document.getElementById('my-report').value.trim();
+const theirReport = document.getElementById('their-report').value.trim();
+const myPower = document.getElementById('my-power').value.trim();
+const myEquipment = document.getElementById('my-equipment').value.trim();
+const myAntenna = document.getElementById('my-antenna').value.trim();
+const myQth = document.getElementById('my-qth').value.trim();
+const myGrid = document.getElementById('my-grid').value.trim();
+const theirGrid = document.getElementById('their-grid').value.trim();
+const power = document.getElementById('power').value.trim();
+const equipment = document.getElementById('equipment').value.trim();
+const antenna = document.getElementById('antenna').value.trim();
+const qth = document.getElementById('qth').value.trim();
+const notes = document.getElementById('notes').value.trim();
+if (!callsign || !frequency || !mode || !utcTime || !parseUtcStringToDateParts(utcTime) || !myReport || !theirReport) {
+await showModal('表单错误', '请填写呼号、频率、模式和信号报告', false);
+return;
+}
+const log = {
+id: Date.now(),
+callsign,
+frequency,
+mode,
+utcTime,
+myReport,
+theirReport,
+myPower,
+myEquipment,
+myAntenna,
+myQth,
+myGrid,
+theirGrid,
+power,
+equipment,
+antenna,
+qth,
+notes
+};
+logs.unshift(log);
+localStorage.setItem('hamLogs', JSON.stringify(logs));
+clearForm();
+addLogBtn.innerHTML = '<i class="fas fa-check"></i> 添加成功!';
+setTimeout(() => addLogBtn.innerHTML = '<i class="fas fa-plus"></i> 添加通联记录', 2000);
+showPage('logs-page');
+renderLogs(log.id);
+if (CONFIG.autoUpload) {
+autoUploadLogs();
+}
+});
+clearFormBtn.addEventListener('click', clearForm);
+function getBandFromFrequency(freqStr) {
+const freq = parseFloat(freqStr);
+if (isNaN(freq)) return 'UNKNOWN';
+if (freq >= 1.8 && freq < 2.0) return '160m';
+if (freq >= 3.5 && freq < 4.0) return '80m';
+if (freq >= 5.0 && freq < 5.5) return '60m';
+if (freq >= 7.0 && freq < 7.3) return '40m';
+if (freq >= 10.1 && freq < 10.2) return '30m';
+if (freq >= 14.0 && freq < 14.35) return '20m';
+if (freq >= 18.068 && freq < 18.168) return '17m';
+if (freq >= 21.0 && freq < 21.45) return '15m';
+if (freq >= 24.89 && freq < 24.99) return '12m';
+if (freq >= 28.0 && freq < 29.7) return '10m';
+if (freq >= 50.0 && freq < 54.0) return '6m';
+if (freq >= 144.0 && freq < 148.0) return '2m';
+if (freq >= 420.0 && freq < 450.0) return '70cm';
+return 'OTHER';
+}
+exportAdiBtn.addEventListener('click', () => {
+if (logs.length === 0) {
+if (typeof Android !== 'undefined') {
+Android.showToast("没有通联记录可导出");
+} else {
+showModal('提示', '没有通联记录可导出', false);
+}
+return;
+}
+const MY_CALLSIGN = getCallSignFromStorage();
+let adiContent = 'Generated by Log\n<ADIF_VER:5>3.1.0\n<PROGRAMID:7>Log\n<PROGRAMVERSION:5>1.0.0\n';
+adiContent += `<STATION_CALLSIGN:${MY_CALLSIGN.length}>${MY_CALLSIGN}\n<EOH>\n`;
+logs.forEach(log => {
+const band = getBandFromFrequency(log.frequency) || '';
+const qth = log.qth || '';
+const rig = log.equipment || '';
+const antenna = log.antenna || '';
+const txPwr = log.myPower || '';
+const rxPwr = log.power || '';
+const notes = log.notes || '';
+const dateStr = log.utcTime.replace(/-/g, '').substring(0, 8);
+const timeStr = log.utcTime.substring(11, 16).replace(':', '');
+adiContent += `<BAND:${band.length}>${band}\n<CALL:${log.callsign.length}>${log.callsign}\n<STATION_CALLSIGN:${MY_CALLSIGN.length}>${MY_CALLSIGN}\n`;
+if (notes) {
+adiContent += `<NOTES:${notes.length}>${notes}\n<NOTES_INTL:${notes.length}>${notes}\n`;
+}
+adiContent += `<QSO_DATE:8>${dateStr}\n<FREQ_RX:${log.frequency.length}>${log.frequency}\n<FREQ:${log.frequency.length}>${log.frequency}\n<MODE:${log.mode.length}>${log.mode}\n`;
+adiContent += `<RX_PWR:${rxPwr.length}>${rxPwr}\n<TX_PWR:${txPwr.length}>${txPwr}\n<RST_RCVD:${(log.theirReport || '').length}>${log.theirReport || ''}\n<RST_SENT:${(log.myReport || '').length}>${log.myReport || ''}\n`;
+adiContent += `<TIME_ON:4>${timeStr}\n<RIG:${rig.length}>${rig}\n<ANTENNA:${antenna.length}>${antenna}\n<QTH:${qth.length}>${qth}\n`;
+if (log.myQth) adiContent += `<MY_CITY:${log.myQth.length}>${log.myQth}\n`;
+if (log.myGrid) adiContent += `<MY_GRIDSQUARE:${log.myGrid.length}>${log.myGrid}\n`;
+if (log.theirGrid) adiContent += `<GRIDSQUARE:${log.theirGrid.length}>${log.theirGrid}\n`;
+if (log.myEquipment) adiContent += `<MY_RIG:${log.myEquipment.length}>${log.myEquipment}\n`;
+if (log.myAntenna) adiContent += `<MY_ANTENNA:${log.myAntenna.length}>${log.myAntenna}\n`;
+adiContent += `<EOR>\n`;
+});
+const fileName = 'Log_' + new Date().toISOString().slice(0, 10) + '.adi';
+if (typeof Android !== 'undefined') {
+if (Android.saveToDownloads) {
+Android.saveToDownloads(fileName, adiContent, "application/octet-stream");
+} else {
+const savePath = "/sdcard/Download/" + fileName;
+const success = Android.writeFile(savePath, adiContent);
+if (success) {
+Android.showToast("文件已保存：" + savePath);
+} else {
+Android.showToast("保存失败，请检查权限或 APP 版本");
+}
+}
+} else {
+const blob = new Blob([adiContent], { type: 'application/octet-stream' });
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = fileName;
+document.body.appendChild(a);
+a.click();
+document.body.removeChild(a);
+URL.revokeObjectURL(url);
+}
+});
+function isDuplicate(newLog, existingLog) {
+if (newLog.callsign !== existingLog.callsign || newLog.mode !== existingLog.mode || getBandFromFrequency(newLog.frequency) !== getBandFromFrequency(existingLog.frequency)) {
+return false;
+}
+const newParts = parseUtcStringToDateParts(newLog.utcTime);
+const existingParts = parseUtcStringToDateParts(existingLog.utcTime);
+if (!newParts || !existingParts) return false;
+const newTimestamp = Date.UTC(newParts.year, newParts.month - 1, newParts.day, newParts.hours, newParts.minutes);
+const existingTimestamp = Date.UTC(existingParts.year, existingParts.month - 1, existingParts.day, existingParts.hours, existingParts.minutes);
+return Math.abs(newTimestamp - existingTimestamp) < 60000;
+}
+// 辅助函数：将文件读取为文本 Promise
+function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (e) => reject(e);
+        reader.readAsText(file);
+    });
+}
+// 【批量导入修改开始】
+importAdiBtn.addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files); // 获取所有选中的文件
+    if (files.length === 0) return;
+
+    // 显示处理状态
+    importStatus.style.display = 'block';
+    importStatus.textContent = `正在处理 ${files.length} 个文件...`;
+    importStatus.className = 'import-status import-warning';
+
+    let newLogsBatch = []; // 存储本次导入的所有新日志
+    let totalDuplicates = 0; // 统计重复数量
+
+    // 遍历所有文件
+    for (const file of files) {
+        try {
+            const content = await readFileAsText(file);
+            // 复用现有的解析函数
+            const parsedLogs = parseAdifToLogs(content); 
+            
+            for (const log of parsedLogs) {
+                let isDup = false;
+                
+                // 1. 检查是否与现有日志重复
+                for (const existingLog of logs) {
+                    if (isDuplicate(log, existingLog)) {
+                        isDup = true;
+                        break;
+                    }
+                }
+                
+                // 2. 检查是否与本次批量导入中已添加的日志重复 (防止多个文件间重复)
+                if (!isDup) {
+                    for (const batchLog of newLogsBatch) {
+                        if (isDuplicate(log, batchLog)) {
+                            isDup = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!isDup) {
+                    newLogsBatch.push(log);
+                } else {
+                    totalDuplicates++;
+                }
+            }
+        } catch (err) {
+            console.error(`文件 ${file.name} 读取失败:`, err);
+        }
+    }
+
+    // 处理导入结果
+    if (newLogsBatch.length > 0) {
+        // 将新日志添加到现有日志开头
+        logs = [...newLogsBatch, ...logs];
+        localStorage.setItem('hamLogs', JSON.stringify(logs));
+        renderLogs();
+        
+        // 如果开启自动上传，则触发上传
+        if (CONFIG.autoUpload) {
+            await autoUploadLogs();
+        }
+
+        importStatus.textContent = `成功导入 ${newLogsBatch.length} 条记录，跳过 ${totalDuplicates} 条重复`;
+        importStatus.className = 'import-status import-success';
+    } else {
+        importStatus.textContent = `未导入新记录，跳过 ${totalDuplicates} 条重复`;
+        importStatus.className = 'import-status import-warning';
+    }
+    
+    // 5 秒后隐藏状态提示
+    setTimeout(() => importStatus.style.display = 'none', 5000);
+    
+    // 清空文件输入框，允许再次导入相同文件
+    e.target.value = '';
+});
+// 【批量导入修改结束】
+function loadSettings() {
+document.getElementById('my-callsign').value = MY_CALLSIGN;
+utcPlus8Toggle.checked = CONFIG.useUTCPlus8;
+document.getElementById('show-equipment-both').checked = CONFIG.showEquipmentBoth ?? false;
+document.getElementById('show-antenna-both').checked = CONFIG.showAntennaBoth ?? false;
+document.getElementById('show-qth-both').checked = CONFIG.showQthBoth ?? false;
+document.getElementById('show-grid-both').checked = CONFIG.showGridBoth ?? false;
+document.getElementById('show-power-both').checked = CONFIG.showPowerBoth ?? false;
+document.getElementById('auto-upload-toggle').checked = CONFIG.autoUpload ?? false;
+document.getElementById('auto-pull-toggle').checked = CONFIG.autoPull ?? false;
+renderEditableList('freq-list', CONFIG.frequencies);
+renderEditableList('mode-list', CONFIG.modes);
+renderEditableList('report-list', CONFIG.signalReports);
+renderEditableList('power-list', CONFIG.power);
+renderEditableList('equip-list', CONFIG.equipment);
+renderEditableList('antenna-list', CONFIG.antennas);
+applyBothFieldVisibility();
+}
+// ===== 修改后的函数：实时保存设置 =====
+function setupRealTimeSettings() {
+    // 呼号实时保存
+    document.getElementById('my-callsign').addEventListener('input', (e) => {
+        MY_CALLSIGN = e.target.value.trim();
+        localStorage.setItem('myCallsign', MY_CALLSIGN);
+
+        // 【新增逻辑】如果呼号为空，强制关闭自动上传和自动拉取
+        if (!MY_CALLSIGN) {
+            let needsUpdate = false;
+            
+            // 检查并关闭自动上传
+            if (CONFIG.autoUpload) {
+                CONFIG.autoUpload = false;
+                needsUpdate = true;
+            }
+            // 检查并关闭自动拉取
+            if (CONFIG.autoPull) {
+                CONFIG.autoPull = false;
+                needsUpdate = true;
+            }
+
+            // 如果状态发生了改变，执行更新操作
+            if (needsUpdate) {
+                // 1. 更新 UI 开关状态
+                document.getElementById('auto-upload-toggle').checked = false;
+                document.getElementById('auto-pull-toggle').checked = false;
+
+                // 2. 清除定时器 (防止后台继续尝试同步)
+                if (autoUploadInterval) {
+                    clearInterval(autoUploadInterval);
+                    autoUploadInterval = null;
+                }
+                if (autoPullInterval) {
+                    clearInterval(autoPullInterval);
+                    autoPullInterval = null;
+                }
+
+                // 3. 保存配置到本地存储
+                saveConfig();
+                
+                // 可选：如果需要提示用户，可以取消下面这行的注释
+                // console.log('呼号为空，已自动关闭同步功能');
+            }
+        }
+    });
+    // UTC+8 开关实时保存
+    utcPlus8Toggle.addEventListener('change', (e) => {
+        CONFIG.useUTCPlus8 = e.target.checked;
+        saveConfig();
+        refreshUTCTime();
+        renderLogs();
+    });
+    // 双方字段开关实时保存
+    ['show-equipment-both', 'show-antenna-both', 'show-qth-both', 'show-grid-both', 'show-power-both'].forEach(id => {
+        document.getElementById(id).addEventListener('change', (e) => {
+            // 【修复】使用正则 correctly 转换 kebab-case 为 camelCase
+            // show-equipment-both -> showEquipmentBoth
+            const configKey = id.replace(/-([a-z])/g, (match, letter) => letter.toUpperCase());
+            CONFIG[configKey] = e.target.checked;
+            saveConfig();
+            applyBothFieldVisibility();
+            renderLogs();
+        });
+    });
+}
+function renderEditableList(containerId, items) {
+const container = document.getElementById(containerId);
+container.innerHTML = '';
+items.forEach(item => {
+const div = document.createElement('div');
+div.className = 'editable-item';
+div.innerHTML = `${item} <span class="remove-btn" data-value="${item}" data-type="${containerId}">×</span>`;
+container.appendChild(div);
+});
+container.querySelectorAll('.remove-btn').forEach(btn => {
+btn.addEventListener('click', (e) => {
+const value = e.target.dataset.value;
+const type = e.target.dataset.type;
+let arr;
+switch (type) {
+case 'freq-list': arr = CONFIG.frequencies; break;
+case 'mode-list': arr = CONFIG.modes; break;
+case 'report-list': arr = CONFIG.signalReports; break;
+case 'power-list': arr = CONFIG.power; break;
+case 'equip-list': arr = CONFIG.equipment; break;
+case 'antenna-list': arr = CONFIG.antennas; break;
+}
+const index = arr.indexOf(value);
+if (index !== -1) {
+arr.splice(index, 1);
+renderEditableList(type, arr);
+saveConfig();
+createBubbles();
+}
+});
+});
+}
+document.getElementById('auto-upload-toggle').addEventListener('change', async (e) => {
+await toggleAutoUpload(e.target.checked);
+});
+document.getElementById('auto-pull-toggle').addEventListener('change', (e) => {
+toggleAutoPull(e.target.checked);
+});
+document.getElementById('add-freq').addEventListener('click', () => {
+const val = document.getElementById('new-freq').value.trim();
+if (val && !CONFIG.frequencies.includes(val)) {
+CONFIG.frequencies.push(val);
+saveConfig();
+renderEditableList('freq-list', CONFIG.frequencies);
+createBubbles();
+document.getElementById('new-freq').value = '';
+}
+});
+document.getElementById('add-mode').addEventListener('click', () => {
+const val = document.getElementById('new-mode').value.trim();
+if (val && !CONFIG.modes.includes(val)) {
+CONFIG.modes.push(val);
+saveConfig();
+renderEditableList('mode-list', CONFIG.modes);
+createBubbles();
+document.getElementById('new-mode').value = '';
+}
+});
+document.getElementById('add-report').addEventListener('click', () => {
+const val = document.getElementById('new-report').value.trim();
+if (val && !CONFIG.signalReports.includes(val)) {
+CONFIG.signalReports.push(val);
+saveConfig();
+renderEditableList('report-list', CONFIG.signalReports);
+createBubbles();
+document.getElementById('new-report').value = '';
+}
+});
+document.getElementById('add-power').addEventListener('click', () => {
+const val = document.getElementById('new-power').value.trim();
+if (val && !CONFIG.power.includes(val)) {
+CONFIG.power.push(val);
+saveConfig();
+renderEditableList('power-list', CONFIG.power);
+createBubbles();
+document.getElementById('new-power').value = '';
+}
+});
+document.getElementById('add-equip').addEventListener('click', () => {
+const val = document.getElementById('new-equip').value.trim();
+if (val && !CONFIG.equipment.includes(val)) {
+CONFIG.equipment.push(val);
+saveConfig();
+renderEditableList('equip-list', CONFIG.equipment);
+createBubbles();
+document.getElementById('new-equip').value = '';
+}
+});
+document.getElementById('add-antenna').addEventListener('click', () => {
+const val = document.getElementById('new-antenna').value.trim();
+if (val && !CONFIG.antennas.includes(val)) {
+CONFIG.antennas.push(val);
+saveConfig();
+renderEditableList('antenna-list', CONFIG.antennas);
+createBubbles();
+document.getElementById('new-antenna').value = '';
+}
+});
+function saveConfig() {
+localStorage.setItem('config', JSON.stringify(CONFIG));
+}
+function setupScrollToTopButton() {
+const pagesWithScroll = [logsPage, settingsPage];
+pagesWithScroll.forEach(pageElement => {
+if (pageElement) {
+pageElement.addEventListener('scroll', () => {
+if (!pageElement.classList.contains('active')) return;
+scrollToTopBtn.style.display = pageElement.scrollTop > 100 ? 'inline-flex' : 'none';
+});
+}
+});
+scrollToTopBtn.addEventListener('click', () => {
+const activePage = document.querySelector('.page.active');
+if (activePage && activePage.id !== 'log-form-page') {
+activePage.scrollTo({ top: 0, behavior: 'smooth' });
+}
+});
+}
+showPage('log-form-page');
+window.addEventListener('beforeunload', () => {
+if (autoPullInterval) {
+clearInterval(autoPullInterval);
+autoPullInterval = null;
+}
+if (autoUploadInterval) {
+clearInterval(autoUploadInterval);
+autoUploadInterval = null;
+}
+});
+    // ==========================================
+    // 【新增】左右滑动切换页面功能
+    // ==========================================
+    let touchStartX = 0;
+    let touchStartY = 0;
+    const swipeThreshold = 50; // 最小滑动距离 (像素)
+    const pageIds = ['log-form-page', 'logs-page', 'settings-page']; // 页面切换顺序
+
+    document.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+    }, { passive: true });
+
+    document.addEventListener('touchend', (e) => {
+        const touchEndX = e.changedTouches[0].screenX;
+        const touchEndY = e.changedTouches[0].screenY;
+        handleSwipe(touchStartX, touchEndX, touchStartY, touchEndY);
+    }, { passive: true });
+
+    function handleSwipe(startX, endX, startY, endY) {
+        // 如果模态框（确认框）打开，不响应滑动，避免误操作
+        if (customModal && customModal.style.display === 'flex') return;
+
+        const diffX = endX - startX;
+        const diffY = endY - startY;
+
+        // 确保水平滑动距离大于垂直滑动距离，避免干扰页面内的上下滚动
+        if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > swipeThreshold) {
+            const currentPage = document.querySelector('.page.active');
+            if (!currentPage) return;
+
+            const currentPageId = currentPage.id;
+            const currentIndex = pageIds.indexOf(currentPageId);
+            let newIndex = currentIndex;
+
+            if (diffX < 0) { 
+                // 向左滑 (手指从右向左) -> 下一页
+                if (currentIndex < pageIds.length - 1) newIndex = currentIndex + 1;
+            } else { 
+                // 向右滑 (手指从左向右) -> 上一页
+                if (currentIndex > 0) newIndex = currentIndex - 1;
+            }
+
+            if (newIndex !== currentIndex && newIndex >= 0 && newIndex < pageIds.length) {
+                const targetPageId = pageIds[newIndex];
+                
+                // 如果切换到日志页，确保刷新列表 (与点击按钮行为保持一致)
+                if (targetPageId === 'logs-page') {
+                    if (logSearchInput.value.trim() !== '') {
+                        logSearchInput.value = '';
+                    }
+                    renderLogs();
+                }
+                
+                // 如果切换到设置页，确保加载设置
+                if (targetPageId === 'settings-page') {
+                    loadSettings();
+                }
+
+                showPage(targetPageId);
+            }
+        }
+    }
+</script>
+</body>
+</html>

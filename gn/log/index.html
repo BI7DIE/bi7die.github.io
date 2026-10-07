@@ -1,3 +1,9 @@
+<!--
+  本文件由 tools/build_standalone_html.py 自动生成，请勿直接编辑。
+  源：site/log_index.html + site/qso_runtime.js + site/qsolog_patch.js
+  生成时间：2026-10-07 10:04:28
+  特点：全部 CSS/JS 内联，零外部依赖；既供 APK 内置离线使用，也可直接部署为网页版。
+-->
 
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -5,8 +11,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>通联日志</title>
-<link rel="shortcut icon" href="../..//img/favicon.ico">
-<link rel="stylesheet" href="css/all.min.css">
 <style>
 /* 【全局样式】 */
 :root {
@@ -1970,6 +1974,1601 @@ autoUploadInterval = null;
             }
         }
     }
+</script>
+<script>
+/**
+ * qso_runtime.js —— 运行时布局 / 滚动兼容层
+ *
+ * 【单一来源】本文件同时被两条链路使用：
+ *   1) 打包进 APK：由 tools/build_standalone_html.py 内联进成品 index.html；
+ *   2) 网页版：同一个成品 index.html 直接部署到网站，行为完全一致。
+ * 因此任何布局改动改这一处即可，不要再回到 Java 里写注入字符串。
+ *
+ * 包含三块（原先分别由 MainActivity 的 injectSafeAreaStyle /
+ * injectScrollCompat / injectFooterSpacing 注入）：
+ *
+ * A. 安全区 + 文档根滚动布局
+ *    - 状态栏/导航栏/圆角由外部调用 window.__qsoSetInsets(dp...) 推入 CSS 变量；
+ *    - 站点原生 html,body{overflow:hidden} + .page{position:absolute;overflow-y:auto}
+ *      的嵌套滚动在 Android WebView 上会吞掉手势，这里把 .page 拉回文档流，
+ *      由文档根承担滚动（移动端浏览器同样受益）。
+ *    注意：.page 规则里的 absolute→relative、overflow:auto→visible 必须完整保留，
+ *      缺任一项都会退回「内部绝对定位滚动容器」，文档根再次滚不动。
+ *
+ * B. 滚动兼容层
+ *    站点 JS 依赖 .page 的 scrollTop / scrollTo / scroll 事件，改文档根滚动后
+ *    这些调用全部失效，这里做等价映射，并包裹 showPage 按页记忆滚动位置。
+ *
+ * C. 底部间距实测
+ *    用 ResizeObserver 跟踪 .fixed-footer 真实高度写入 --qso-footer-h，
+ *    使最底部卡片到导航栏的距离 = 卡片之间的纵向间距。
+ */
+(function () {
+  'use strict';
+
+  /* ═══════════════ A. 安全区 + 布局 ═══════════════ */
+  if (!window.__qso_sa) {
+    window.__qso_sa = 1;
+    var st = document.createElement('style');
+    st.textContent =
+      'html{background:radial-gradient(circle at top,#13203a 0%,#080c16 100%)!important;}'
+      + 'body{background:radial-gradient(circle at top,#13203a 0%,#080c16 100%)!important;}'
+      + 'html{height:auto!important;min-height:100%!important;overflow-x:hidden!important;overflow-y:auto!important;-webkit-overflow-scrolling:touch!important;}'
+      + 'body{height:auto!important;min-height:100%!important;display:block!important;overflow-x:hidden!important;overflow-y:visible!important;}'
+      + '.container{flex:0 0 auto!important;overflow:visible!important;height:auto!important;min-height:0!important;'
+      +   'padding-top:calc(var(--qso-sat,0px) + 8px)!important;'
+      +   'padding-left:calc(20px + var(--qso-sal,0px))!important;'
+      +   'padding-right:calc(20px + var(--qso-sar,0px))!important;}'
+      + '.page{position:relative!important;top:auto!important;left:auto!important;right:auto!important;bottom:auto!important;'
+      +   'width:auto!important;height:auto!important;min-height:0!important;max-height:none!important;'
+      +   'overflow:visible!important;overflow-y:visible!important;touch-action:auto!important;'
+      +   'padding-top:20px!important;'
+      +   'padding-bottom:calc(var(--qso-footer-h,72px) + 20px)!important;}'
+      + '.page.active{display:block!important;}'
+      + '.fixed-footer{padding-bottom:calc(12px + var(--qso-sab,0px))!important;}';
+    (document.head || document.documentElement).appendChild(st);
+
+    /**
+     * 由宿主（Android WebView 的 pushSafeArea）调用，单位是 CSS px（== dp）。
+     * 浏览器直开时无人调用，变量保持默认 0，页面按普通网页布局。
+     */
+    window.__qsoSetInsets = function (t, b, l, r, c) {
+      var d = document.documentElement.style;
+      d.setProperty('--qso-sat', t + 'px');
+      d.setProperty('--qso-sab', b + 'px');
+      d.setProperty('--qso-sal', l + 'px');
+      d.setProperty('--qso-sar', r + 'px');
+      d.setProperty('--qso-corner', (c || 0) + 'px');
+    };
+  }
+
+  /* ═══════════════ B. 滚动兼容层 ═══════════════ */
+  (function () {
+    var ids = ['log-form-page', 'logs-page', 'settings-page'];
+    var winY = function () {
+      return window.pageYOffset || document.documentElement.scrollTop || 0;
+    };
+    var baseTop = function (el) {
+      return el.getBoundingClientRect().top + winY();
+    };
+
+    // .page.scrollTo / .page.scrollTop 映射到文档根滚动
+    ids.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el || el.__qsoSp) return;
+      el.__qsoSp = 1;
+      el.scrollTo = function (o) {
+        var t = 0, b = 'auto';
+        if (typeof o === 'number') {
+          t = o;
+        } else if (o && typeof o === 'object') {
+          t = (typeof o.top === 'number') ? o.top : 0;
+          b = o.behavior || 'auto';
+        }
+        var y = baseTop(el) + t;
+        if (y < 0) y = 0;
+        try {
+          window.scrollTo({ top: y, behavior: b });
+        } catch (e) {
+          window.scrollTo(0, y);
+        }
+      };
+      try {
+        Object.defineProperty(el, 'scrollTop', {
+          configurable: true,
+          get: function () {
+            var v = winY() - baseTop(el);
+            return v > 0 ? Math.round(v) : 0;
+          },
+          set: function (v) { el.scrollTo(v); }
+        });
+      } catch (e) { /* 某些环境不允许重定义，忽略 */ }
+    });
+
+    // window 滚动 -> 向当前激活页派发 scroll，唤醒站点原有的「回到顶部」监听
+    if (!window.__qso_sc) {
+      window.__qso_sc = 1;
+      window.addEventListener('scroll', function () {
+        var ap = document.querySelector('.page.active');
+        var btn = document.getElementById('scroll-to-top-btn');
+        if (!ap) return;
+        try { ap.dispatchEvent(new Event('scroll')); } catch (e) { /* no-op */ }
+        if (btn) {
+          btn.style.display = (ap.id !== 'log-form-page' && ap.scrollTop > 100) ? 'inline-flex' : 'none';
+        }
+      }, { passive: true });
+    }
+
+    // 切页滚动复位：单一文档根下，站点 showPage() 只切 class、不碰滚动，
+    // 上一页的滚动量会被带到下一页。这里按 pageId 记忆/恢复。
+    if (typeof window.showPage === 'function' && !window.showPage.__qsoWrapped) {
+      var orig = window.showPage, pos = {};
+      window.showPage = function (id) {
+        var cur = document.querySelector('.page.active');
+        if (cur) pos[cur.id] = winY();
+        orig(id);
+        var y = pos[id] || 0;
+        window.scrollTo(0, y);
+        // 切 class 后需等 layout 生效，否则可能被 clamp，故下一帧再对齐一次
+        setTimeout(function () { window.scrollTo(0, y); }, 0);
+      };
+      window.showPage.__qsoWrapped = true;
+    }
+  })();
+
+  /* ═══════════════ C. 底部间距实测 ═══════════════ */
+  (function () {
+    var setH = function () {
+      var f = document.querySelector('.fixed-footer');
+      if (!f) return;
+      var h = f.offsetHeight || 0;
+      if (!h) return;
+      document.documentElement.style.setProperty('--qso-footer-h', h + 'px');
+    };
+    setH();
+    if (window.__qso_fo) return;
+    window.__qso_fo = 1;
+    try {
+      if (window.ResizeObserver) {
+        var f0 = document.querySelector('.fixed-footer');
+        if (f0) new ResizeObserver(setH).observe(f0);
+      }
+    } catch (e) { /* no-op */ }
+    window.addEventListener('resize', setH);
+    window.addEventListener('orientationchange', function () { setTimeout(setH, 300); });
+  })();
+})();
+
+</script>
+<script>
+/*
+ * qsolog_patch.js — 远程站点 https://jun.now.cc/gn/log/ 的运行时增强补丁。
+ *
+ * 站点源码不可改，所有改动通过 evaluateJavascript 注入。以下全部为叠加层，
+ * 不修改远程本体，也不改动 Java 外壳（仅 MainActivity 加载本资源）。
+ *
+ * ── 模块清单 ────────────────────────────────────────────────────────────
+ *   M1 托管默认值：频率 438.5 / 功率 1,3,5,8,15 / 卫星 ARISS,SO-50,RS-44
+ *   M2 卫星数据层：侧存储 + localStorage.setItem 拦截（防止被站点 renderLogs 覆盖）
+ *   M3 样式：胶囊开关 / 成组表单 / 卡片概览行 / 表头卫星徽标
+ *   M4 设置页：所有复选框改胶囊按钮；托管三组快捷填充列表
+ *   M5 表单：删除"是否卫星通联"勾选框，仅留卫星输入（填了即视为卫星通联）；
+ *           同类字段合并为一组成对排布，下方共用一组气泡
+ *   M6 卡片：卫星图标移到 频率 与 模式 之间并自适应；
+ *           仅信号报告与功率合并为 "值/值" 概览行；空字段不显示
+ *   M7 ADIF 导出/导入：<PROP_MODE:3>SAT + <SAT_NAME:N>名称
+ *   M8 图标：Font Awesome 全部就地换成内联 SVG（零本地资源、零网络请求）
+ *   M9 状态：表单内容与当前页面持久化，横竖屏切换 / 意外重建后可原样恢复
+ *
+ * ── 站点侧的两个硬约束（决定了 M2 必须这样设计）─────────────────────────
+ *   a) `let logs = JSON.parse(localStorage.getItem('hamLogs'))`(L785) 是 let，
+ *      跨脚本作用域不可见，无法直接改内存里的记录对象；
+ *   b) `renderLogs()` 开头就 `localStorage.setItem('hamLogs', JSON.stringify(logs))`(L1292)，
+ *      即**每次渲染都会用站点内存数组覆盖 localStorage**。
+ *      → 因此必须拦截 setItem，在出站时把侧存储合并回去，否则数据必被抹掉。
+ *   c) `addLogBtn` 成功路径为 setItem → clearForm() → showPage → renderLogs，
+ *      表单值必须在**捕获阶段**快照，且快照要做**值拷贝**（clearForm 会清空缓存变量）。
+ */
+(function () {
+  'use strict';
+
+  if (window.__qso_patch_injected) return;
+  window.__qso_patch_injected = true;
+
+  /* ═══════════════ 常量 ═══════════════ */
+  var LOGS_KEY = 'hamLogs';
+  var MAP_KEY = 'qsoSatMap';        // 侧存储：{ "<id>": { satName: String } }
+  var DEF_KEY = 'qsoDefaults';      // 托管默认值：{ frequencies, power, satellites }
+  var CFG_KEY = 'config';           // 站点自身配置键（只读用于还原信号报告/设备/天线列表）
+
+  var DEFAULTS = {
+    frequencies: ['438.5'],
+    power: ['1', '3', '5', '8', '15'],
+    satellites: ['ARISS', 'SO-50', 'RS-44']
+  };
+
+  // 站点 DEFAULT_CONFIG 的副本，用于还原未被托管覆盖的字段
+  var SITE_DEFAULT_CONFIG = {
+    frequencies: ['438.5', '439.8', '14.270', '28.500', '50.110'],
+    modes: ['SSB', 'CW', 'FT8', 'FM', 'AM'],
+    equipment: ['UVK6', 'UVK5', 'UV5R', 'TK11', '5Rmini', 'SHX8800', 'SHX8600', '八重洲 FT991', '八重洲 300D', '即时通 D9000'],
+    antennas: ['原装', '八木', '拉杆', 'MA01', '正 V'],
+    power: ['1', '3', '5', '8', '15', '25', '50'],
+    signalReports: ['59', '58', '49', '48']
+  };
+
+  function q(id) { return document.getElementById(id); }
+  function trim_(v) { return (v === null || v === undefined) ? '' : String(v).trim(); }
+
+  /* ═══════════════ 存储基础（均走原始 API，避免进入被拦截的 setter） ═══════════════ */
+  var _origSetItem = null;
+  function rawGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function rawSet(k, v) {
+    if (_origSetItem) { _origSetItem.call(localStorage, k, v); return; }
+    try { localStorage.setItem(k, v); } catch (e) { /* no-op */ }
+  }
+  function readJSON(k, fallback) {
+    try {
+      var v = JSON.parse(rawGet(k));
+      return (v === null || v === undefined) ? fallback : v;
+    } catch (e) { return fallback; }
+  }
+
+  /* ── M1 托管默认值 ── */
+  function getDefs() {
+    var d = readJSON(DEF_KEY, null);
+    if (!d || typeof d !== 'object') d = {};
+    ['frequencies', 'power', 'satellites'].forEach(function (k) {
+      if (!Array.isArray(d[k]) || !d[k].length) d[k] = DEFAULTS[k].slice();
+    });
+    return d;
+  }
+  function saveDefs(d) { rawSet(DEF_KEY, JSON.stringify(d)); }
+  (function seedDefs() { if (!rawGet(DEF_KEY)) saveDefs(getDefs()); })();
+
+  // 未被托管的站点列表（信号报告 / 设备 / 天线），从站点自身配置还原
+  function siteList(key) {
+    var saved = readJSON(CFG_KEY, {});
+    var arr = (saved && saved[key]) ? saved[key] : SITE_DEFAULT_CONFIG[key];
+    return Array.isArray(arr) ? arr : (SITE_DEFAULT_CONFIG[key] || []);
+  }
+
+  /* ── 日志记录读取 ── */
+  function getStoredLogs() {
+    var a = readJSON(LOGS_KEY, null);
+    return Array.isArray(a) ? a : [];
+  }
+  function idSet() {
+    var arr = getStoredLogs(), out = [];
+    for (var i = 0; i < arr.length; i++) if (arr[i] && arr[i].id != null) out.push(String(arr[i].id));
+    return out;
+  }
+  function getStoredLog(id) {
+    var arr = getStoredLogs();
+    for (var i = 0; i < arr.length; i++) if (arr[i] && String(arr[i].id) === String(id)) return arr[i];
+    return null;
+  }
+
+  /* ═══════════════ M2 卫星数据层 ═══════════════ */
+  function getMap() {
+    var m = readJSON(MAP_KEY, null);
+    return (m && typeof m === 'object' && !Array.isArray(m)) ? m : {};
+  }
+  function saveMap(m) { rawSet(MAP_KEY, JSON.stringify(m)); }
+
+  // 隐式判定：填了卫星名 = 卫星通联；不填 = 否。无额外提示文案。
+  function setSat(id, satName) {
+    if (id == null) return;
+    var m = getMap();
+    m[String(id)] = { satName: trim_(satName) };
+    saveMap(m);
+  }
+  function getSatName(id) {
+    if (id == null) return '';
+    var s = getMap()[String(id)];
+    if (s) return trim_(s.satName);
+    var rec = getStoredLog(id);
+    // 兼容早期版本落盘格式 / ADIF 导入记录
+    if (rec && rec.satellite) return trim_(rec.satName);
+    return '';
+  }
+  function isSatellite(id) { return !!getSatName(id); }
+
+  // 出站合并：任何一次 hamLogs 落盘都把卫星字段写回去
+  function mergeSatellite(json) {
+    var arr;
+    try { arr = JSON.parse(json); } catch (e) { return json; }
+    if (!Array.isArray(arr)) return json;
+    var map = getMap(), dirty = false;
+    for (var i = 0; i < arr.length; i++) {
+      var rec = arr[i];
+      if (!rec || rec.id == null) continue;
+      var sid = String(rec.id), m = map[sid];
+      if (m === undefined && trim_(rec.satName)) {
+        map[sid] = { satName: trim_(rec.satName) };   // 站点自身（如 ADIF 导入）带来的卫星名，登记防丢
+        dirty = true;
+      }
+      var name = (map[sid] ? trim_(map[sid].satName) : trim_(rec.satName));
+      arr[i].satellite = !!name;
+      arr[i].satName = name;
+    }
+    if (dirty) saveMap(map);
+    return JSON.stringify(arr);
+  }
+
+  (function patchStorage() {
+    try {
+      if (window.__qso_storage_patched) {
+        _origSetItem = _origSetItem || Storage.prototype.setItem;
+        return;
+      }
+      _origSetItem = Storage.prototype.setItem;
+      localStorage.setItem = function (k, v) {
+        if (k === LOGS_KEY) { try { v = mergeSatellite(v); } catch (e) { /* no-op */ } }
+        return _origSetItem.call(localStorage, k, v);
+      };
+      window.__qso_storage_patched = true;
+    } catch (e) { /* no-op：极端环境降级，不抛错 */ }
+  })();
+
+  (function hydrateMap() {
+    var arr = getStoredLogs(), map = getMap(), dirty = false;
+    for (var i = 0; i < arr.length; i++) {
+      var rec = arr[i];
+      if (!rec || rec.id == null) continue;
+      var sid = String(rec.id);
+      if (map[sid] === undefined && trim_(rec.satName)) {
+        map[sid] = { satName: trim_(rec.satName) };
+        dirty = true;
+      }
+    }
+    if (dirty) saveMap(map);
+  })();
+
+  function persistSat() {
+    try {
+      var cur = rawGet(LOGS_KEY);
+      if (cur == null) return;
+      localStorage.setItem(LOGS_KEY, cur);
+    } catch (e) { /* no-op */ }
+  }
+
+  /* ═══════════════ M3 样式 ═══════════════ */
+  (function injectStyle() {
+    if (q('__qso_patch_style')) return;
+    var s = document.createElement('style');
+    s.id = '__qso_patch_style';
+    s.textContent =
+      /* 设置页：胶囊开关 */
+      '.pill-toggle{position:relative;flex:0 0 auto;width:46px;height:26px;padding:0;margin:0;' +
+      'border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.10);' +
+      'cursor:pointer;-webkit-tap-highlight-color:transparent;' +
+      'transition:background .2s ease,border-color .2s ease;}' +
+      '.pill-toggle::after{content:\'\';position:absolute;top:2px;left:2px;width:20px;height:20px;' +
+      'border-radius:50%;background:#cbd5e1;transition:transform .2s ease,background .2s ease;' +
+      'box-shadow:0 1px 3px rgba(0,0,0,.35);}' +
+      '.pill-toggle.on{background:rgba(59,130,246,.55);border-color:rgba(140,180,255,.70);}' +
+      '.pill-toggle.on::after{transform:translateX(20px);background:#fff;}' +
+      /* 表单：成组 —— 组内两输入框也能自适应（宽容器并排，窄容器堆叠） */
+      '.fg-pair{grid-column:1/-1;margin-bottom:4px;}' +
+      '.fg-pair-title{font-size:.95rem;font-weight:600;color:#cbd5e1;margin-bottom:8px;}' +
+      '.fg-pair-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;}' +
+      /* 宽屏（横屏 / 平板）：组不再独占整行，参与 .form-grid 的多列流式排布，
+         一行能排几个组由 auto-fit 按可用宽度自动决定，从竖屏的 1 组/行提升到 2~4 组/行 */
+      '@media (min-width:640px){' +
+      '.fg-pair{grid-column:auto;}' +
+      '.form-grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))!important;gap:16px;}' +
+      '.fg-pair-title{margin-bottom:6px;}' +
+      '}' +
+      '@media (min-width:1100px){' +
+      '.form-grid{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))!important;}' +
+      '}' +
+      '.pair-half{min-width:0;}' +
+      '.pair-half input,.pair-half select{width:100%;}' +
+      '.pair-sub{display:block;font-size:.8rem;font-weight:500;color:#94a3b8;margin-bottom:4px;}' +
+      '.fg-pair .bubbles-container{margin-top:8px;}' +
+      /* 表单：卫星字段 */
+      '#sat-form-group input[type=text]{width:100%;}' +
+      /* 卡片表头：卫星徽标自适应夹在频率与模式之间 */
+      '.log-header{gap:8px!important;align-items:center!important;}' +
+      '.log-header .frequency,.log-header .mode{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;}' +
+      '.sat-chip{flex:0 1 auto;min-width:0;display:inline-flex;align-items:center;gap:4px;overflow:hidden;' +
+      'font-size:.72rem;font-weight:600;color:#dff0ff;white-space:nowrap;' +
+      'background:linear-gradient(135deg,rgba(56,135,255,.34),rgba(56,135,255,.14));' +
+      'border:1px solid rgba(140,180,255,.55);border-radius:999px;padding:3px 9px;}' +
+      '.sat-chip i,.sat-chip .qso-ico{flex:0 0 auto;}' +
+      '.sat-chip .sat-txt{overflow:hidden;text-overflow:ellipsis;}' +
+      /* 卡片：概览行（单列，独立成行） */
+      '.log-details{grid-template-columns:1fr!important;gap:6px;}' +
+      /* 站点 .log-actions 写死了 grid-column:span 2（原假设两列布局），
+         单列化后会把「编辑/删除」挤进隐式第二列，这里改回整行跨度 */
+      '.log-details .log-actions{grid-column:1/-1!important;width:100%!important;}' +
+      '.qso-det{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:2px 0;}' +
+      '.qso-det-k{flex:0 0 auto;color:#94a3b8;font-size:.85rem;}' +
+      '.qso-det-v{min-width:0;color:#e2e8f0;font-size:.92rem;text-align:right;word-break:break-word;}'
+      /* M8 内联 SVG 图标：尺寸跟随字号（1em），描边取父级文字色 */
+      + '.qso-ico{display:inline-block;vertical-align:-0.15em;flex:0 0 auto;pointer-events:none;}'
+      /* M5 共用气泡的「当前作用对象」：点击气泡后输入框会失焦，
+         仅靠 :focus 看不出气泡会写进哪一边，故用细描边常驻提示 */
+      + '.qso-bub-target{border-color:rgba(96,165,250,.75)!important;box-shadow:0 0 0 2px rgba(59,130,246,.16)!important;}'
+      /* 空闲态（3 秒无任何操作，滑动不算）：连 :focus 自带的蓝框也一并收掉，
+         只保留「正在操作」时才亮 —— 用站点自身的 --border 变量，主题切换仍一致 */
+      + 'body.qso-idle input:focus,body.qso-idle textarea:focus,body.qso-idle select:focus{'
+      + 'border-color:var(--border)!important;box-shadow:none!important;}';
+    (document.head || document.documentElement).appendChild(s);
+  })();
+
+  /* ═══════════════ M8 内联 SVG 图标 ═══════════════ */
+  /*
+   * 站点原本靠 <link href="css/all.min.css"> 加载 Font Awesome 图标字体：
+   *   - 字体文件必然要走网络，弱网/离线时图标全变方框；
+   *   - 想离线就得把字体文件塞进 app 本地资源，又与「不存本地」相悖。
+   * 本模块的做法：图标以矢量路径的形式直接写在这段注入代码里，运行时把
+   *   <i class="fas fa-plus"></i>
+   * 就地替换成内联 <svg class="qso-ico">。产物既没有图标文件（不占本地），
+   * 也不发起任何图标/字体请求（不依赖网络）——图标就是代码本身。
+   * Java 侧（MainActivity.shouldInterceptRequest）会拦掉 all.min.css 与
+   * woff/ttf 等字体请求，从网络层彻底断掉这条依赖。
+   */
+  var ICON_PATHS = {
+    'plus': '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    'edit': '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    'times': '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    'eraser': '<path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L13 21"/>'
+      + '<path d="M22 21H7"/><path d="m5 11 9 9"/>',
+    'file-import': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>'
+      + '<path d="M14 2v6h6"/><path d="M12 12v6"/><path d="m9 15 3 3 3-3"/>',
+    'file-export': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>'
+      + '<path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 9 3-3 3 3"/>',
+    'satellite-dish': '<circle cx="12" cy="12" r="3"/>'
+      + '<ellipse cx="12" cy="12" rx="10" ry="4.6" transform="rotate(-28 12 12)"/>',
+    'list': '<line x1="9" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/>'
+      + '<line x1="9" y1="18" x2="21" y2="18"/><path d="M3.5 6h.01"/><path d="M3.5 12h.01"/><path d="M3.5 18h.01"/>',
+    'cog': '<circle cx="12" cy="12" r="3"/>'
+      + '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l-.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>',
+    'globe': '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>'
+      + '<path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z"/>',
+    'arrow-up': '<line x1="12" y1="19" x2="12" y2="5"/><path d="m5 12 7-7 7 7"/>',
+    'arrow-down': '<line x1="12" y1="5" x2="12" y2="19"/><path d="m5 12 7 7 7-7"/>',
+    'check': '<path d="M20 6 9 17l-5-5"/>',
+    'trash': '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>'
+      + '<path d="M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/>',
+    // 兜底常用图标（站点后续若新增，直接命中即可，无需再改代码）
+    'search': '<circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.5" y2="16.5"/>',
+    'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><line x1="12" y1="15" x2="12" y2="3"/>',
+    'upload': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><line x1="12" y1="3" x2="12" y2="15"/>',
+    'user': '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    'refresh': '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/>',
+    'clock': '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
+    'calendar': '<rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/>'
+  };
+  // FA 常见别名（站点写的是 fas/far/fab 前缀，图标名本身已足够）
+  var ICON_ALIAS = {
+    'x': 'times', 'close': 'times', 'remove': 'times', 'times-circle': 'times',
+    'pencil': 'edit', 'pen': 'edit', 'pen-to-square': 'edit', 'edit-2': 'edit',
+    'gear': 'cog', 'cogs': 'cog', 'settings': 'cog', 'sliders': 'cog',
+    'trash-alt': 'trash', 'trash-can': 'trash', 'trash-2': 'trash',
+    'satellite': 'satellite-dish', 'checkmark': 'check',
+    'file-arrow-up': 'file-export', 'file-arrow-down': 'file-import',
+    'arrow-up-2': 'arrow-up', 'arrow-down-2': 'arrow-down',
+    'rotate-right': 'refresh', 'sync': 'refresh', 'user-circle': 'user'
+  };
+  var ICON_SEL = 'i.fa,i.fas,i.far,i.fab,i.fal,i.fad,i[class^="fa-"],i[class*=" fa-"]';
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+
+  /** 生成一个内联 SVG 图标元素：尺寸 1em（跟随字号），描边取 currentColor。 */
+  function makeIcon(name) {
+    var svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('class', 'qso-ico');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '1em');
+    svg.setAttribute('height', '1em');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    var body = ICON_PATHS[ICON_ALIAS[name] || name];
+    svg.innerHTML = body || '';
+    return svg;
+  }
+
+  /** 从 class 列表里解析出图标名（fas/far 等前缀与 fa-2x 等尺寸类自动跳过）。 */
+  function iconNameOf(el) {
+    var cls = String(el.getAttribute('class') || '').split(/\s+/);
+    for (var i = 0; i < cls.length; i++) {
+      var c = cls[i];
+      if (c.indexOf('fa-') !== 0) continue;
+      var n = c.slice(3);
+      if (ICON_PATHS[n]) return n;
+      if (ICON_ALIAS[n]) return ICON_ALIAS[n];
+    }
+    return null;
+  }
+
+  /** 把 root 下所有 FA 的 <i> 就替换成内联 <svg>；无法识别的保持原样（不破坏 DOM）。 */
+  function replaceIcons(root) {
+    if (!root || !root.querySelectorAll) return;
+    var list = root.querySelectorAll(ICON_SEL);
+    for (var i = 0; i < list.length; i++) {
+      var el = list[i];
+      if (!el.parentNode || el.__qsoIco) continue;
+      var n = iconNameOf(el);
+      if (!n) continue;
+      el.__qsoIco = 1;
+      el.parentNode.replaceChild(makeIcon(n), el);
+    }
+  }
+
+  /* ═══════════════ M4 设置页 ═══════════════ */
+
+  /* ---------- 胶囊开关 ---------- */
+  function syncPill(cb) {
+    if (cb && cb.__qsoPill) cb.__qsoPill.classList.toggle('on', !!cb.checked);
+  }
+  function syncAllPills() {
+    var page = q('settings-page');
+    if (!page) return;
+    var cbs = page.querySelectorAll('input[type=checkbox]');
+    for (var i = 0; i < cbs.length; i++) syncPill(cbs[i]);
+  }
+  /**
+   * 「自动上传 / 自动拉取」在未填呼号时开启会失败，站点是这样回滚的：
+   *     document.getElementById('auto-upload-toggle').checked = false;
+   * 直接给 .checked 赋值**不会派发 change 事件**，所以只监听 change 的胶囊开关
+   * 会一直停在「已开启」的观感上，而实际配置明明是关的。
+   * 这里在该元素实例上包一层 checked 存取器：任何程序化赋值都立刻刷新胶囊外观。
+   */
+  function hookCheckedSetter(cb) {
+    if (!cb || cb.__qsoPillHooked) return;
+    cb.__qsoPillHooked = 1;
+    try {
+      var d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'checked');
+      if (!d || !d.set || !d.get) return;
+      Object.defineProperty(cb, 'checked', {
+        configurable: true,
+        get: function () { return d.get.call(this); },
+        set: function (v) {
+          d.set.call(this, !!v);
+          syncPill(cb);
+        }
+      });
+    } catch (e) {
+      /* 个别 WebView 不允许覆写，退化为仅监听 change（人工点击仍正常） */
+    }
+  }
+
+  /** 兜底：站点这两个开关的回滚发生在异步弹窗之后，包一层确保最终结果再对齐一次。 */
+  function wrapSyncToggles() {
+    ['toggleAutoUpload', 'toggleAutoPull'].forEach(function (name) {
+      if (typeof window[name] !== 'function' || window[name].__qsoWrapped) return;
+      var orig = window[name];
+      var wrapped = function () {
+        var r;
+        try { r = orig.apply(this, arguments); } catch (e) { syncAllPills(); throw e; }
+        try {
+          if (r && typeof r.then === 'function') r.then(syncAllPills, syncAllPills);
+        } catch (e) { /* no-op */ }
+        syncAllPills();
+        return r;
+      };
+      wrapped.__qsoWrapped = 1;
+      try { window[name] = wrapped; } catch (e) { /* 只读全局，忽略 */ }
+    });
+  }
+
+  function ensurePillToggles() {
+    var page = q('settings-page');
+    if (!page) return;
+    var cbs = page.querySelectorAll('input[type=checkbox]');
+    for (var i = 0; i < cbs.length; i++) {
+      (function (cb) {
+        if (cb.__qsoPill) { syncPill(cb); return; }
+        var pill = document.createElement('button');
+        pill.type = 'button';
+        pill.className = 'pill-toggle';
+        pill.setAttribute('aria-hidden', 'true');
+        pill.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          cb.checked = !cb.checked;
+          try { cb.dispatchEvent(new Event('change')); } catch (err) { /* no-op */ }
+          syncPill(cb);
+        });
+        cb.style.display = 'none';
+        if (cb.parentNode) cb.parentNode.insertBefore(pill, cb.nextSibling);
+        cb.__qsoPill = pill;
+        cb.addEventListener('change', function () { syncPill(cb); });
+        hookCheckedSetter(cb);
+        syncPill(cb);
+      })(cbs[i]);
+    }
+  }
+
+  /* ---------- 托管三组快捷填充列表 ---------- */
+  function renderList(containerId, items) {
+    var c = q(containerId);
+    if (!c) return;
+    c.innerHTML = '';
+    items.forEach(function (item) {
+      var d = document.createElement('div');
+      d.className = 'editable-item';
+      var txt = document.createElement('span');
+      txt.textContent = item;
+      var rm = document.createElement('span');
+      rm.className = 'remove-btn';
+      rm.setAttribute('data-value', item);
+      rm.textContent = '×';
+      rm.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var defs = getDefs();
+        var idx = defs[managedKey(containerId)].indexOf(item);
+        if (idx !== -1) {
+          defs[managedKey(containerId)].splice(idx, 1);
+          saveDefs(defs);
+          renderList(containerId, defs[managedKey(containerId)]);
+          rebuildAllBubbles(true);
+        }
+      });
+      d.appendChild(txt);
+      d.appendChild(rm);
+      c.appendChild(d);
+    });
+  }
+  function managedKey(containerId) {
+    return containerId === 'freq-list' ? 'frequencies'
+      : containerId === 'power-list' ? 'power'
+      : containerId === 'sat-list' ? 'satellites' : null;
+  }
+
+  function ensureSettingsSection() {
+    if (q('sat-list')) return;
+    var copyright = document.querySelector('.settings-copyright');
+    if (!copyright) return;
+    var sec = document.createElement('div');
+    sec.className = 'editable-section';
+    sec.innerHTML =
+      '<label>卫星</label>' +
+      '<div class="editable-list" id="sat-list"></div>' +
+      '<input type="text" id="new-sat" placeholder="添加卫星名称">' +
+      '<button class="btn-secondary" id="add-sat">添加</button>';
+    copyright.parentNode.insertBefore(sec, copyright);
+    q('add-sat').addEventListener('click', function () {
+      var inp = q('new-sat');
+      var val = inp ? inp.value.trim() : '';
+      if (!val) return;
+      var defs = getDefs();
+      if (defs.satellites.indexOf(val) === -1) {
+        defs.satellites.push(val);
+        saveDefs(defs);
+      }
+      renderList('sat-list', defs.satellites);
+      rebuildAllBubbles(true);
+      inp.value = '';
+    });
+    renderList('sat-list', getDefs().satellites);
+  }
+
+  /* ═══════════════ M5 表单 ═══════════════ */
+
+  /* ---------- 卫星字段（无勾选框，仅输入 + 气泡） ---------- */
+  function ensureSatField() {
+    if (q('sat-name')) return;
+    var notes = q('notes');
+    if (!notes || !notes.closest) return;
+    var fg = notes.closest('.form-group');
+    if (!fg) return;
+    var div = document.createElement('div');
+    div.className = 'form-group';
+    div.id = 'sat-form-group';
+    div.innerHTML =
+      '<label for="sat-name">具体卫星</label>' +
+      '<input type="text" id="sat-name" placeholder="例如：ARISS / SO-50 / RS-44" autocomplete="off">' +
+      '<div class="bubbles-container" id="sat-bubbles"></div>';
+    fg.parentNode.insertBefore(div, fg);
+  }
+
+  /* ---------- 成对字段分组 ---------- */
+  // 每组：标题独占一行 → 两个输入框左右并排 → 下方共用一组快捷填充气泡
+  var PAIRS = [
+    { key: 'report', title: '信号报告', listKey: 'signalReports',
+      items: [{ id: 'my-report', sub: '我方', ph: '59' }, { id: 'their-report', sub: '对方', ph: '59' }] },
+    { key: 'power', title: '功率', listKey: 'power',
+      items: [{ id: 'my-power', sub: '我方', ph: '5' }, { id: 'power', sub: '对方', ph: '7' }] },
+    { key: 'equip', title: '设备', listKey: 'equipment',
+      items: [{ id: 'my-equipment', sub: '我方', ph: 'UVK6' }, { id: 'equipment', sub: '对方', ph: 'IC-7300' }] },
+    { key: 'antenna', title: '天线', listKey: 'antennas',
+      items: [{ id: 'my-antenna', sub: '我方', ph: '原装' }, { id: 'antenna', sub: '对方', ph: '八木' }] },
+    { key: 'qth', title: 'QTH', listKey: null,
+      items: [{ id: 'my-qth', sub: '我方', ph: '上海' }, { id: 'qth', sub: '对方', ph: '北京' }] },
+    { key: 'grid', title: '网格', listKey: null,
+      items: [{ id: 'my-grid', sub: '我方', ph: 'PM05' }, { id: 'their-grid', sub: '对方', ph: 'OM91' }] }
+  ];
+
+  var _pairTarget = {};   // 每组当前接收气泡的输入 id（默认第一个）
+
+  function pairListKey(p) {
+    if (p.key === 'power') return 'power';
+    return p.listKey;
+  }
+  function pairItems(p) {
+    if (p.key === 'power') return getDefs().power;
+    if (p.listKey) return siteList(p.listKey);
+    return [];
+  }
+
+  function buildPair(p) {
+    var a = q(p.items[0].id), b = q(p.items[1].id);
+    if (!a || !b) return false;
+    var ga = a.closest('.form-group'), gb = b.closest('.form-group');
+    if (!ga || !gb) return false;
+
+    var wrap = document.createElement('div');
+    wrap.className = 'fg-pair';
+    wrap.id = 'fg-pair-' + p.key;
+
+    // 标题（沿用原必填标记）
+    var required = !!ga.querySelector('label span[style*="red"]') || !!gb.querySelector('label span[style*="red"]');
+    var title = document.createElement('div');
+    title.className = 'fg-pair-title';
+    title.appendChild(document.createTextNode(p.title));
+    if (required) {
+      title.appendChild(document.createTextNode(' '));
+      var star = document.createElement('span');
+      star.style.color = 'red';
+      star.textContent = '*';
+      title.appendChild(star);
+    }
+
+    var row = document.createElement('div');
+    row.className = 'fg-pair-row';
+
+    [p.items[0], p.items[1]].forEach(function (it) {
+      var input = q(it.id);
+      if (!input) return;
+      var half = document.createElement('div');
+      half.className = 'form-group pair-half';
+      var lab = document.createElement('label');
+      lab.className = 'pair-sub';
+      lab.setAttribute('for', it.id);
+      lab.textContent = it.sub;
+      input.placeholder = it.ph;
+      half.appendChild(lab);
+      half.appendChild(input);
+      row.appendChild(half);
+      // 聚焦即把本组气泡的写入目标切到这个框：先全灭，再按该框当前值点亮
+      input.addEventListener('focus', function () {
+        _pairTarget[p.key] = it.id;
+        bubSetTarget('pair-' + p.key + '-bubbles', it.id);
+      });
+      // 手动输入 / 按键：同步高亮，并把描边重新点亮
+      // （空闲 3 秒熄灭后，只要继续打字就该马上恢复，不能让人以为焦点丢了）
+      input.addEventListener('input', function () {
+        bubSetTarget('pair-' + p.key + '-bubbles', it.id);
+      });
+      input.addEventListener('keydown', function () {
+        bubSetTarget('pair-' + p.key + '-bubbles', it.id);
+      });
+      // 点到别处 / 空白处：本组描边立刻熄灭（气泡自身的选中高亮不受影响）
+      input.addEventListener('blur', function () {
+        var g = _bubGroups['pair-' + p.key + '-bubbles'];
+        if (!g) return;
+        g.touched = false;
+        syncBubbles('pair-' + p.key + '-bubbles');
+      });
+    });
+
+    var bub = document.createElement('div');
+    bub.className = 'bubbles-container';
+    bub.id = 'pair-' + p.key + '-bubbles';
+
+    wrap.appendChild(title);
+    wrap.appendChild(row);
+    if (pairItems(p).length) wrap.appendChild(bub);
+
+    var grid = ga.parentNode;
+    if (!grid) return false;
+    grid.insertBefore(wrap, ga);
+    if (ga.parentNode) ga.parentNode.removeChild(ga);
+    if (gb.parentNode) gb.parentNode.removeChild(gb);
+    return true;
+  }
+
+  function ensureFormGroups() {
+    var built = false;
+    for (var i = 0; i < PAIRS.length; i++) {
+      if (q('fg-pair-' + PAIRS[i].key)) continue;
+      if (buildPair(PAIRS[i])) built = true;
+    }
+    if (built) rebuildAllBubbles(true);
+    return built;
+  }
+
+  // 站点用 toggleFieldPair 控制"启用XX（双方）"；这里补一步：两半都被隐藏时整组收起
+  function syncPairVisibility() {
+    for (var i = 0; i < PAIRS.length; i++) {
+      var p = PAIRS[i], wrap = q('fg-pair-' + p.key);
+      if (!wrap) continue;
+      var visible = false;
+      for (var j = 0; j < p.items.length; j++) {
+        var inp = q(p.items[j].id);
+        var half = inp ? inp.closest('.form-group') : null;
+        if (half && half.style.display !== 'none') visible = true;
+      }
+      wrap.style.display = visible ? '' : 'none';
+    }
+  }
+
+  /* ---------- 气泡：一组气泡 ↔ 多个输入框 的作用模型 ---------- */
+  /*
+   * 成组字段（如「功率」= 我方功率 + 对方功率）下方共用一组气泡，交互约定：
+   *   1) 气泡永远作用于「组内最近聚焦过的那个输入框」（初始为左边那个）。
+   *   2) 焦点从左边切到右边时：先清空全部高亮，再按右边框的当前值重新点亮；
+   *      该框为空、或内容与任何气泡都不一致 → 一个都不亮。
+   *   3) 点气泡 = 写入当前目标框并高亮；再点同一个气泡 = 取消，清空该框、
+   *      气泡回到普通样式，绝不会去改另一边的框。
+   *   4) 填完第 1 个框后自动把焦点交给第 2 个框（省一次手动点击）；取消则不推进。
+   *   5) 高亮的生命周期（见下方 startIdleWatch）：点到别处即灭；空闲超 3 秒
+   *      （滑动不算操作）连 :focus 蓝框一起收掉。气泡自身的选中高亮不受影响。
+   *
+   * 关键实现点：目标框必须是**每次点击时动态求值**，不能在建气泡时闭包捕获，
+   * 否则右边选完再点左边仍然会写进右边（这正是上一版的 bug）。
+   */
+  var _bubCache = {};      // containerId -> 上次填充的候选值签名（避免无谓重建）
+  var _bubGroups = {};     // containerId -> { ids:[输入框id...], cur:当前目标id }
+
+  function bubEnsure(containerId, ids, defaultId) {
+    var g = _bubGroups[containerId];
+    if (!g) {
+      // touched：用户是否真的操作过这组气泡（聚焦过某框 / 点过气泡）。
+      // 未操作前不给任何输入框画描边 —— 打开应用就一片蓝框是多余的视觉噪音。
+      g = _bubGroups[containerId] = { ids: ids.slice(), cur: defaultId || ids[0], touched: false };
+    } else {
+      g.ids = ids.slice();
+      if (g.ids.indexOf(g.cur) === -1) g.cur = defaultId || ids[0];
+    }
+    return g;
+  }
+  function bubInput(containerId) {
+    var g = _bubGroups[containerId];
+    return g ? q(g.cur) : null;
+  }
+
+  /* ---------- 高亮的生命周期：只在该亮的时候亮 ---------- */
+  /*
+   * 约定（本轮新增）：
+   *   1) 点输入框 → 亮；点到别处 / 空白处 → 立刻灭（blur 即灭）。
+   *   2) 空闲超过 3 秒（滑动不算操作）→ 所有描边与 :focus 蓝框一起灭。
+   *   3) 成组字段用气泡填完第 1 个框 → 第 1 个框灭、焦点自动移到第 2 个框。
+   * 注意：这里只管**输入框**的描边。快捷填充气泡自身的 .active 高亮表示
+   *       「当前值等于该候选值」，与焦点无关，不受以上规则影响。
+   */
+  var IDLE_MS = 3000;
+  var _lastActAt = Date.now();
+
+  /** 记录一次「真实操作」：点击 / 输入 / 按键 / 聚焦。滚动与滑动不计入。 */
+  function markActivity() {
+    _lastActAt = Date.now();
+    var b = document.body;
+    if (b) b.classList.remove('qso-idle');
+  }
+
+  /** 熄灭所有组的输入框描边（气泡高亮保持原样）。 */
+  function clearBubTargets() {
+    for (var k in _bubGroups) {
+      if (!Object.prototype.hasOwnProperty.call(_bubGroups, k)) continue;
+      var g = _bubGroups[k];
+      if (!g.touched) continue;
+      g.touched = false;
+      syncBubbles(k);
+    }
+  }
+
+  function startIdleWatch() {
+    // 只监听这几种事件，刻意不含 scroll / touchmove —— 用户明确要求滑动不计入操作
+    ['click', 'input', 'keydown', 'focusin', 'change'].forEach(function (ev) {
+      document.addEventListener(ev, markActivity, true);
+    });
+    setInterval(function () {
+      if (Date.now() - _lastActAt < IDLE_MS) return;
+      clearBubTargets();
+      var b = document.body;
+      if (b) b.classList.add('qso-idle');
+    }, 500);
+  }
+  /** 切换组内目标（聚焦时调用）：立即按新目标的值重算高亮。 */
+  function bubSetTarget(containerId, id) {
+    var g = _bubGroups[containerId];
+    if (!g || g.ids.indexOf(id) === -1) return;
+    g.cur = id;
+    g.touched = true;
+    syncBubbles(containerId);
+  }
+  /** 高亮 = 目标框的值与气泡文本完全一致；空值 / 无匹配 → 全灭。 */
+  function syncBubbles(containerId) {
+    var c = q(containerId);
+    if (!c) return;
+    var inp = bubInput(containerId);
+    var v = inp ? trim_(inp.value) : '';
+    var bs = c.querySelectorAll('.bubble');
+    for (var i = 0; i < bs.length; i++) {
+      bs[i].classList.toggle('active', v !== '' && trim_(bs[i].textContent) === v);
+    }
+    // 常驻描边标出「气泡会写进哪个框」（点击气泡后输入框会失焦，:focus 不够用）。
+    // 但只在用户操作过之后才画 —— 默认状态下一个框都不该是蓝的。
+    var g = _bubGroups[containerId];
+    if (g) {
+      for (var j = 0; j < g.ids.length; j++) {
+        var el = q(g.ids[j]);
+        if (el) el.classList.toggle('qso-bub-target', !!g.touched && el === inp);
+      }
+    }
+  }
+
+  function fillBubbles(containerId, items, ids, defaultId) {
+    var c = q(containerId);
+    if (!c) return;
+    bubEnsure(containerId, ids, defaultId);
+    var sig = items.join('|');
+    if (_bubCache[containerId] === sig && c.children.length === items.length) {
+      syncBubbles(containerId);
+      return;
+    }
+    _bubCache[containerId] = sig;
+    c.innerHTML = '';
+    items.forEach(function (item) {
+      var b = document.createElement('div');
+      b.className = 'bubble';
+      b.textContent = item;
+      b.addEventListener('click', function () {
+        var inp = bubInput(containerId);
+        if (!inp) return;
+        var g = _bubGroups[containerId];
+        var v = trim_(b.textContent);
+        var cancel = (trim_(inp.value) === v);
+        inp.value = cancel ? '' : v;   // 再点一次 = 取消
+        try { inp.dispatchEvent(new Event('input')); } catch (e) { /* no-op */ }
+
+        if (cancel) {
+          // 取消：留在原框，不做焦点推进
+          if (g) g.touched = true;
+          syncBubbles(containerId);
+          return;
+        }
+        // 成组字段：填完第 1 个框就把焦点交给第 2 个框，省掉一次手动点击
+        var advanced = false;
+        if (g && g.ids.length > 1 && inp.id) {
+          var idx = g.ids.indexOf(inp.id);
+          var nx = (idx >= 0 && g.ids[idx + 1]) ? q(g.ids[idx + 1]) : null;
+          if (nx) {
+            bubSetTarget(containerId, g.ids[idx + 1]);  // 描边移到第 2 个框，第 1 个随之熄灭
+            try { nx.focus(); } catch (e) { /* no-op */ }
+            advanced = true;
+          }
+        }
+        if (!advanced) {
+          if (g) g.touched = true;
+          syncBubbles(containerId);
+        }
+      });
+      c.appendChild(b);
+    });
+    syncBubbles(containerId);
+  }
+
+  function rebuildAllBubbles(force) {
+    if (force) _bubCache = {};
+    // 单框容器（目标恒为该框，行为一致：再点一次取消）
+    fillBubbles('freq-bubbles', getDefs().frequencies, ['frequency'], 'frequency');
+    fillBubbles('mode-bubbles', siteList('modes'), ['mode'], 'mode');
+    fillBubbles('sat-bubbles', getDefs().satellites, ['sat-name'], 'sat-name');
+    // 成组容器：两个框共用一组，默认左边
+    for (var i = 0; i < PAIRS.length; i++) {
+      var p = PAIRS[i];
+      var items = pairItems(p);
+      if (!items.length) continue;
+      var ids = [p.items[0].id, p.items[1].id];
+      fillBubbles('pair-' + p.key + '-bubbles', items, ids, _pairTarget[p.key] || ids[0]);
+    }
+  }
+
+  /** 单框容器：输入/聚焦时同步高亮（成组容器在 buildPair 里绑定）。 */
+  function bindBubbleInputs() {
+    var singles = [['frequency', 'freq-bubbles'], ['mode', 'mode-bubbles'], ['sat-name', 'sat-bubbles']];
+    for (var i = 0; i < singles.length; i++) {
+      var el = q(singles[i][0]);
+      if (!el || el.__qsoBubBound) continue;
+      el.__qsoBubBound = 1;
+      (function (cid, id) {
+        el.addEventListener('input', function () { bubSetTarget(cid, id); });
+        el.addEventListener('keydown', function () { bubSetTarget(cid, id); });
+        // 聚焦 = 显式指定本组气泡的写入目标，此时才允许出现描边
+        el.addEventListener('focus', function () { bubSetTarget(cid, id); });
+        // 点到别处 / 空白处：描边立刻熄灭
+        el.addEventListener('blur', function () {
+          var g = _bubGroups[cid];
+          if (!g) return;
+          g.touched = false;
+          syncBubbles(cid);
+        });
+      })(singles[i][1], singles[i][0]);
+    }
+  }
+
+  /* ---------- 表单回填 / 清空 ---------- */
+  function populateSatForm(id) {
+    var inp = q('sat-name');
+    if (inp) inp.value = getSatName(id);
+    readFormIntoBuffer();
+  }
+  function resetSatForm() {
+    var inp = q('sat-name');
+    if (inp) inp.value = '';
+    resetFormBuffer();
+  }
+
+  /* ═══════════════ M6 卡片 ═══════════════ */
+  function joinSlash(parts) {
+    var out = [];
+    for (var i = 0; i < parts.length; i++) {
+      if (trim_(parts[i]) !== '') out.push(trim_(parts[i]));
+    }
+    return out.join('/');
+  }
+
+  function rebuildCardDetails(card, log) {
+    var box = card.querySelector('.log-details');
+    if (!box || box.__qsoDone) return;
+    box.__qsoDone = true;
+
+    var rows = [];
+    // 仅信号报告与功率合并
+    var report = joinSlash([log.myReport, log.theirReport]);
+    if (report) rows.push(['信号报告', report]);
+    var pw = joinSlash([trim_(log.myPower) ? log.myPower + 'W' : '', trim_(log.power) ? log.power + 'W' : '']);
+    if (pw) rows.push(['功率', pw]);
+
+    // 其余字段各自独立成行
+    var singles = [
+      ['我方设备', log.myEquipment], ['对方设备', log.equipment],
+      ['我方天线', log.myAntenna], ['对方天线', log.antenna],
+      ['我方 QTH', log.myQth], ['对方 QTH', log.qth],
+      ['我方网格', log.myGrid], ['对方网格', log.theirGrid]
+    ];
+    for (var i = 0; i < singles.length; i++) {
+      if (trim_(singles[i][1]) !== '') rows.push(singles[i]);   // 空值不显示，不用横杠占位
+    }
+
+    // 站点的「编辑 / 删除」按钮本来就在 .log-details 内部（见卡片模板 .log-actions），
+    // 重建为空必须从内部取出再挂回去，否则会被一并抹掉。若确实不存在则按同样结构补建。
+    var actions = box.querySelector('.log-actions') || buildActions(card, id);
+
+    box.innerHTML = '';
+    rows.forEach(function (r) {
+      var row = document.createElement('div');
+      row.className = 'qso-det';
+      var k = document.createElement('span');
+      k.className = 'qso-det-k';
+      k.textContent = r[0];
+      var v = document.createElement('span');
+      v.className = 'qso-det-v';
+      v.textContent = r[1];
+      row.appendChild(k);
+      row.appendChild(v);
+      box.appendChild(row);
+    });
+    if (actions) box.appendChild(actions);
+  }
+
+  /** 兜底：按站点原结构重建「编辑 / 删除」按钮行。 */
+  function buildActions(card, id) {
+    if (id == null) return null;
+    var box = document.createElement('div');
+    box.className = 'log-actions';
+    var edit = document.createElement('button');
+    edit.className = 'btn-warning btn-sm';
+    edit.appendChild(makeIcon('edit'));
+    edit.appendChild(document.createTextNode(' 编辑'));
+    edit.addEventListener('click', function (e) {
+      e.stopPropagation();
+      try { if (typeof editLog === 'function') editLog(id); } catch (err) { /* no-op */ }
+    });
+    var del = document.createElement('button');
+    del.className = 'btn-danger btn-sm';
+    del.appendChild(makeIcon('trash'));
+    del.appendChild(document.createTextNode(' 删除'));
+    del.addEventListener('click', function (e) {
+      e.stopPropagation();
+      try { if (typeof deleteLog === 'function') deleteLog(id); } catch (err) { /* no-op */ }
+    });
+    box.appendChild(edit);
+    box.appendChild(del);
+    return box;
+  }
+
+  function addSatelliteChip(card, id) {
+    if (card.querySelector('.sat-chip')) return;
+    var header = card.querySelector('.log-header');
+    var modeEl = header ? header.querySelector('.mode') : null;
+    if (!header || !modeEl) return;
+    var name = getSatName(id);
+    if (!name) return;
+    var chip = document.createElement('span');
+    chip.className = 'sat-chip';
+    var ico = makeIcon('satellite-dish');   // 内联 SVG，不用图标字体
+    var txt = document.createElement('span');
+    txt.className = 'sat-txt';
+    txt.textContent = name;
+    chip.appendChild(ico);
+    chip.appendChild(txt);
+    // 夹在「频率」与「模式」之间
+    header.insertBefore(chip, modeEl);
+  }
+
+  function decorateCards() {
+    var cards = document.querySelectorAll('.log-card');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      var id = (card.id && card.id.indexOf('log-') === 0) ? card.id.slice(4) : null;
+      var log = (id != null) ? getStoredLog(id) : null;
+      if (!log) continue;
+      rebuildCardDetails(card, log);
+      addSatelliteChip(card, id);
+    }
+    // 留言 → 备注
+    var notes = document.querySelectorAll('#logs-container .log-notes strong');
+    for (var j = 0; j < notes.length; j++) {
+      notes[j].textContent = notes[j].textContent.replace(/留言\s*[:：]/, '备注：');
+    }
+  }
+
+  /* ═══════════════ M7 ADIF ═══════════════ */
+  // <PROP_MODE:3>SAT + <SAT_NAME:N>名称
+  function buildAdif(logsArr) {
+    var MY_CALLSIGN = '';
+    try { if (typeof getCallSignFromStorage === 'function') MY_CALLSIGN = getCallSignFromStorage() || ''; } catch (e) { MY_CALLSIGN = ''; }
+
+    var adi = 'Generated by Log\n<ADIF_VER:5>3.1.0\n<PROGRAMID:7>Log\n<PROGRAMVERSION:5>1.0.0\n';
+    adi += '<STATION_CALLSIGN:' + MY_CALLSIGN.length + '>' + MY_CALLSIGN + '\n<EOH>\n';
+
+    for (var i = 0; i < logsArr.length; i++) {
+      var log = logsArr[i];
+      var satName = getSatName(log.id);
+      log.satellite = !!satName;
+      log.satName = satName;
+
+      var band = '';
+      try { if (typeof getBandFromFrequency === 'function') band = getBandFromFrequency(log.frequency) || ''; } catch (e) { band = ''; }
+      var qth = log.qth || '', rig = log.equipment || '', antenna = log.antenna || '';
+      var txPwr = log.myPower || '', rxPwr = log.power || '', notes = log.notes || '';
+      var utc = log.utcTime || '';
+      var dateStr = utc.replace(/-/g, '').substring(0, 8);
+      var timeStr = utc.substring(11, 16).replace(':', '');
+
+      adi += '<BAND:' + band.length + '>' + band + '\n';
+      adi += '<CALL:' + (log.callsign || '').length + '>' + (log.callsign || '') + '\n';
+      adi += '<STATION_CALLSIGN:' + MY_CALLSIGN.length + '>' + MY_CALLSIGN + '\n';
+      if (notes) {
+        adi += '<NOTES:' + notes.length + '>' + notes + '\n';
+        adi += '<NOTES_INTL:' + notes.length + '>' + notes + '\n';
+      }
+      adi += '<QSO_DATE:8>' + dateStr + '\n';
+      adi += '<FREQ_RX:' + (log.frequency || '').length + '>' + (log.frequency || '') + '\n';
+      adi += '<FREQ:' + (log.frequency || '').length + '>' + (log.frequency || '') + '\n';
+      adi += '<MODE:' + (log.mode || '').length + '>' + (log.mode || '') + '\n';
+      adi += '<RX_PWR:' + rxPwr.length + '>' + rxPwr + '\n';
+      adi += '<TX_PWR:' + txPwr.length + '>' + txPwr + '\n';
+      adi += '<RST_RCVD:' + (log.theirReport || '').length + '>' + (log.theirReport || '') + '\n';
+      adi += '<RST_SENT:' + (log.myReport || '').length + '>' + (log.myReport || '') + '\n';
+      adi += '<TIME_ON:4>' + timeStr + '\n';
+      adi += '<RIG:' + rig.length + '>' + rig + '\n';
+      adi += '<ANTENNA:' + antenna.length + '>' + antenna + '\n';
+      adi += '<QTH:' + qth.length + '>' + qth + '\n';
+      if (log.myQth) adi += '<MY_CITY:' + log.myQth.length + '>' + log.myQth + '\n';
+      if (log.myGrid) adi += '<MY_GRIDSQUARE:' + log.myGrid.length + '>' + log.myGrid + '\n';
+      if (log.theirGrid) adi += '<GRIDSQUARE:' + log.theirGrid.length + '>' + log.theirGrid + '\n';
+      if (log.myEquipment) adi += '<MY_RIG:' + log.myEquipment.length + '>' + log.myEquipment + '\n';
+      if (log.myAntenna) adi += '<MY_ANTENNA:' + log.myAntenna.length + '>' + log.myAntenna + '\n';
+      if (log.satellite) {
+        adi += '<PROP_MODE:3>SAT\n';
+        adi += '<SAT_NAME:' + log.satName.length + '>' + log.satName + '\n';
+      }
+      adi += '<EOR>\n';
+    }
+    return adi;
+  }
+
+  function onExportClick() {
+    var logsArr = getStoredLogs();
+    if (!logsArr.length) { toast('没有通联记录可导出'); return; }
+    var adi, fileName = 'Log_' + new Date().toISOString().slice(0, 10) + '.adi';
+    try { adi = buildAdif(logsArr); } catch (e) { toast('导出失败'); return; }
+    try {
+      if (typeof Android !== 'undefined') {
+        if (Android.saveToDownloads) {
+          Android.saveToDownloads(fileName, adi, 'application/octet-stream');
+        } else {
+          var p = '/sdcard/Download/' + fileName;
+          toast(Android.writeFile(p, adi) ? ('文件已保存：' + p) : '保存失败');
+        }
+        return;
+      }
+      var blob = new Blob([adi], { type: 'application/octet-stream' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = fileName;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e2) { toast('导出失败'); }
+  }
+  function toast(msg) {
+    try { if (typeof Android !== 'undefined' && Android.showToast) { Android.showToast(msg); return; } } catch (e) { /* no-op */ }
+  }
+
+  /* ═══════════════ M9 表单 / 页面状态持久化 ═══════════════ */
+  /*
+   * 兜底：正常情况下横竖屏切换不再销毁重建 Activity（AndroidManifest 已声明
+   * configChanges），网页与表单原样保留。但若系统仍因内存压力等原因重建，
+   * WebView 会重新加载 → 表单被清空、页面跳回默认的「填写记录」页。
+   * 这里把「填了什么 + 停在哪一页」快照到 localStorage，重载后立刻还原。
+   *
+   * 时效性：只认 30 秒内的快照。旋屏是瞬时的，必定命中；隔天冷启动不会被
+   * 翻出旧草稿或旧页面。
+   */
+  var STATE_KEY = 'qsoFormState';
+  var STATE_TTL = 30000;
+
+  function formFields() {
+    var page = q('log-form-page');
+    if (!page) return [];
+    var els = page.querySelectorAll('input,select,textarea'), out = [];
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (!el.id || el.type === 'file') continue;   // 文件选择框不快照
+      out.push(el);
+    }
+    return out;
+  }
+
+  function clearFormState() {
+    try { localStorage.removeItem(STATE_KEY); } catch (e) { /* no-op */ }
+  }
+
+  function saveFormState() {
+    var vals = {}, f = formFields(), any = false;
+    for (var i = 0; i < f.length; i++) {
+      var v = f[i].value;
+      if (v !== null && v !== undefined && String(v) !== '') {
+        vals[f[i].id] = String(v);
+        any = true;
+      }
+    }
+    var ap = document.querySelector('.page.active');
+    var page = ap ? ap.id : '';
+    if (!any && !page) { clearFormState(); return; }
+    rawSet(STATE_KEY, JSON.stringify({ ts: Date.now(), page: page, values: vals }));
+  }
+
+  var _saveTimer = null;
+  function scheduleSave() {
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(saveFormState, 200);
+  }
+
+  function restoreFormState() {
+    var st = readJSON(STATE_KEY, null);
+    if (!st || typeof st !== 'object') return;
+    if (!st.ts || (Date.now() - st.ts) > STATE_TTL) { clearFormState(); return; }
+    var f = formFields(), vals = st.values || {};
+    for (var i = 0; i < f.length; i++) {
+      var v = vals[f[i].id];
+      if (v !== undefined && !f[i].value) f[i].value = v;   // 只填空着的，不覆盖站点已填的
+    }
+    var ap = document.querySelector('.page.active');
+    if (st.page && (!ap || ap.id !== st.page) && q(st.page) && typeof window.showPage === 'function') {
+      try { window.showPage(st.page); } catch (e) { /* no-op */ }
+    }
+    rebuildAllBubbles(false);
+  }
+
+  function bindFormState() {
+    var f = formFields();
+    for (var i = 0; i < f.length; i++) {
+      if (f[i].__qsoStateBound) continue;
+      f[i].__qsoStateBound = 1;
+      f[i].addEventListener('input', scheduleSave);
+      f[i].addEventListener('change', scheduleSave);
+    }
+  }
+
+  /* ═══════════════ 包裹站点既有函数 ═══════════════ */
+  var _editingId = null;
+
+  if (typeof createBubbles === 'function') {
+    var _origCreateBubbles = createBubbles;
+    createBubbles = function () {
+      _origCreateBubbles();
+      rebuildAllBubbles(false);
+    };
+  }
+
+  if (typeof renderEditableList === 'function') {
+    var _origRel = renderEditableList;
+    renderEditableList = function (containerId, items) {
+      if (managedKey(containerId)) { renderList(containerId, getDefs()[managedKey(containerId)]); return; }
+      _origRel(containerId, items);
+    };
+  }
+
+  if (typeof loadSettings === 'function') {
+    var _origLoad = loadSettings;
+    loadSettings = function () {
+      _origLoad();
+      ensureSettingsSection();
+      renderList('sat-list', getDefs().satellites);
+      ensurePillToggles();
+      syncPairVisibility();
+    };
+  }
+
+  if (typeof applyBothFieldVisibility === 'function') {
+    var _origBoth = applyBothFieldVisibility;
+    applyBothFieldVisibility = function () {
+      _origBoth();
+      syncPairVisibility();
+    };
+    window.applyBothFieldVisibility = applyBothFieldVisibility;
+  }
+
+  if (typeof logsToAdifString === 'function') {
+    var _origAdif = logsToAdifString;
+    logsToAdifString = function (logsArray) {
+      var adi = _origAdif(logsArray);
+      var parts = adi.split('<EOR>');
+      var out = [];
+      for (var k = 0; k < parts.length; k++) {
+        if (k < parts.length - 1) {
+          var log = logsArray[k];
+          var nm = getSatName(log ? log.id : null);
+          var extra = '';
+          if (nm) {
+            extra += '<PROP_MODE:3>SAT\n' + '<SAT_NAME:' + nm.length + '>' + nm + '\n';
+          }
+          out.push(parts[k] + extra);
+        } else { out.push(parts[k]); }
+      }
+      return out.join('<EOR>');
+    };
+  }
+
+  if (typeof parseAdifToLogs === 'function') {
+    var _origParse = parseAdifToLogs;
+    parseAdifToLogs = function (adifText) {
+      var parsed = _origParse(adifText);
+      var records = String(adifText).split(/<EOR>/i);
+      for (var i = 0; i < parsed.length && i < records.length; i++) {
+        var rec = records[i];
+        var m1 = rec.match(/<PROP_MODE:\d+[^>]*>([^<]*)/i);
+        var m2 = rec.match(/<SAT_NAME:\d+[^>]*>([^<]*)/i);
+        // SAT 与 SATELLITE 都认（不同 ADIF 版本写法不同）
+        var pm = m1 ? m1[1].trim().toUpperCase() : '';
+        parsed[i].satellite = (pm === 'SAT' || pm === 'SATELLITE');
+        parsed[i].satName = parsed[i].satellite && m2 ? m2[1].trim() : '';
+      }
+      return parsed;
+    };
+  }
+
+  if (typeof renderLogs === 'function') {
+    var _origRender = renderLogs;
+    renderLogs = function () {
+      _origRender.apply(this, arguments);
+      decorateCards();
+    };
+  }
+
+  if (typeof editLog === 'function') {
+    var _origEdit = editLog;
+    editLog = function (id) {
+      _origEdit(id);
+      _editingId = id;
+      populateSatForm(id);
+    };
+    window.editLog = editLog;
+  }
+
+  if (typeof clearForm === 'function') {
+    var _origClear = clearForm;
+    clearForm = function () {
+      _origClear();
+      resetSatForm();
+      _editingId = null;
+      clearFormState();       // 新增成功 / 主动清空后不再保留草稿
+    };
+    window.clearForm = clearForm;
+  }
+
+  // 记住"当前停在哪一页"：重建后可回到原页面，而不是掉回默认的填写页
+  if (typeof showPage === 'function' && !showPage.__qsoStateWrapped) {
+    var _origShow = showPage;
+    showPage = function (id) {
+      _origShow(id);
+      scheduleSave();
+    };
+    showPage.__qsoStateWrapped = true;
+    window.showPage = showPage;
+  }
+
+  /* ═══════════════ 按钮捕获阶段接管 ═══════════════ */
+  // 必须用 capture：站点新增成功路径里 setItem 之后会 clearForm()，
+  // 冒泡阶段读表单必读到空；且缓存变量会被 resetFormBuffer 清掉，故快照用值拷贝。
+  var _form = { satName: '' };
+  function readFormIntoBuffer() {
+    var inp = q('sat-name');
+    _form.satName = inp ? inp.value.trim() : '';
+  }
+  function resetFormBuffer() { _form.satName = ''; }
+  function snapshotForm() {
+    readFormIntoBuffer();
+    return { satName: _form.satName };
+  }
+
+  var _beforeIds = null;
+
+  function afterAdd(snap) {
+    var after = idSet(), added = [];
+    for (var i = 0; i < after.length; i++) {
+      if (_beforeIds.indexOf(after[i]) === -1) added.push(after[i]);
+    }
+    _beforeIds = null;
+    if (!added.length) return;
+    for (var j = 0; j < added.length; j++) setSat(added[j], snap.satName);
+    persistSat();
+    setTimeout(function () { if (typeof renderLogs === 'function') renderLogs(added[added.length - 1]); }, 0);
+  }
+  function afterUpdate(id, snap) {
+    if (id == null) return;
+    setSat(id, snap.satName);
+    persistSat();
+    setTimeout(function () { if (typeof renderLogs === 'function') renderLogs(id); }, 0);
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+
+    if (t.closest('#export-adi')) {
+      e.preventDefault();
+      e.stopPropagation();                    // 阻止抵达站点自带的内联导出监听
+      onExportClick();
+      return;
+    }
+    if (t.closest('#add-log')) {
+      var s1 = snapshotForm();
+      _beforeIds = idSet();
+      setTimeout(function () { afterAdd(s1); }, 0);
+      return;
+    }
+    if (t.closest('#update-log')) {
+      var s2 = snapshotForm();
+      var id = _editingId;
+      setTimeout(function () { afterUpdate(id, s2); }, 0);
+      return;
+    }
+    if (t.closest('#clear-form') || t.closest('#cancel-edit')) {
+      resetSatForm();
+      _editingId = null;
+      clearFormState();
+      return;
+    }
+    // 站点自身的快捷填充添加按钮：同步进托管列表
+    if (t.closest('#add-freq') || t.closest('#add-power')) {
+      var isFreq = !!t.closest('#add-freq');
+      var srcId = isFreq ? 'new-freq' : 'new-power';
+      var field = isFreq ? 'frequencies' : 'power';
+      var val = q(srcId) ? q(srcId).value.trim() : '';
+      if (val) {
+        var defs = getDefs();
+        if (defs[field].indexOf(val) === -1) { defs[field].push(val); saveDefs(defs); }
+        _bubCache = {};
+      }
+      return;   // 不阻断，站点仍会写入 CONFIG 并触发 renderEditableList → 由本文件接管渲染
+    }
+  }, true);
+
+  /* ═══════════════ 装配 + 自愈 ═══════════════ */
+  function ensureDom() {
+    ensureSettingsSection();
+    wrapSyncToggles();
+    ensurePillToggles();
+    // 设置页三组托管列表：站点在页面加载时就渲染过一次（早于本补丁注入），
+    // 这里必须按托管值重刷，否则会停留在站点默认列表上。
+    ['freq-list', 'power-list', 'sat-list'].forEach(function (cid) {
+      if (q(cid)) renderList(cid, getDefs()[managedKey(cid)]);
+    });
+    ensureSatField();
+    if (ensureFormGroups()) {
+      // 分组后原 form-group 已重建，需要重跑站点字段显隐逻辑
+      setTimeout(function () {
+        try { if (typeof window.applyBothFieldVisibility === 'function') window.applyBothFieldVisibility(); } catch (e) { /* no-op */ }
+      }, 0);
+    }
+    rebuildAllBubbles(false);
+    bindBubbleInputs();
+    syncPairVisibility();
+    syncAllPills();
+    decorateCards();
+    bindFormState();
+    replaceIcons(document);   // M8：FA 的 <i> 就地换成内联 SVG
+  }
+  ensureDom();
+  startIdleWatch();   // 3 秒无操作 → 收掉输入框高亮（滑动不计入操作）
+  // 页面重建（旋屏 / 意外重建）后恢复填写内容与所在页面
+  setTimeout(restoreFormState, 0);
+
+  var _moTimer = null;
+  var _mo = new MutationObserver(function () {
+    if (_moTimer) clearTimeout(_moTimer);
+    _moTimer = setTimeout(function () {
+      _mo.disconnect();
+      ensureDom();
+      _mo.observe(document.body, { childList: true, subtree: true });
+    }, 300);
+  });
+  _mo.observe(document.body, { childList: true, subtree: true });
+})();
+
+</script>
+<script>
+/* 网页版垫片：桌面/手机浏览器直开时，补上站点依赖的 Android.* 接口。 */
+(function () {
+  var nativeAndroid = (typeof window.Android !== 'undefined') ? window.Android : null;
+  var nativeBridge = (typeof window.AndroidBridge !== 'undefined') ? window.AndroidBridge : null;
+  if (nativeAndroid || nativeBridge) return;   /* APK 内：交给 Java 桥 */
+
+  function toast(msg) {
+    var d = document.createElement('div');
+    d.textContent = msg;
+    d.setAttribute('role', 'status');
+    d.style.cssText = 'position:fixed;left:50%;bottom:96px;transform:translateX(-50%);'
+      + 'background:rgba(15,23,42,.94);color:#e2e8f0;padding:10px 16px;border-radius:12px;'
+      + 'font-size:14px;line-height:1.4;z-index:99999;max-width:80%;text-align:center;'
+      + 'box-shadow:0 6px 24px rgba(0,0,0,.35);transition:opacity .25s;';
+    document.body.appendChild(d);
+    setTimeout(function () {
+      d.style.opacity = '0';
+      setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 300);
+    }, 1800);
+  }
+
+  function download(name, content, mime) {
+    var blob = new Blob([content], { type: mime || 'application/octet-stream' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  window.Android = {
+    showToast: toast,
+    saveToDownloads: download,
+    writeFile: function () { return false; },
+    openExternal: function (u) { window.open(u, '_blank', 'noopener'); }
+  };
+  window.__qsoWebShim = 1;
+
+  /* 极少数环境下 Java 桥注入稍晚：300ms 后若桥已就绪就交还控制权 */
+  setTimeout(function () {
+    if (window.__qsoWebShim && typeof window.AndroidBridge !== 'undefined') {
+      window.Android = window.AndroidBridge;
+    }
+  }, 300);
+})();
 </script>
 </body>
 </html>
